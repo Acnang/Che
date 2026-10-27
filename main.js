@@ -3,7 +3,7 @@
  * =========================================================== */
 (function (G) {
   'use strict';
-  const { Mat, Blocks, World, Player, Character, Controls, UI, Settings, Sfx, seedFrom, Net, Combat, Items, ITEM, CONFIG, sha256 } = G;
+  const { Mat, Blocks, World, Player, Character, Controls, UI, Settings, Sfx, seedFrom, Net, Combat, Items, ITEM, CONFIG, sha256, Boss } = G;
   const { B, SOLID, PLANT, TARGET } = Blocks;
   const $ = id => document.getElementById(id);
   const S = Settings.data;
@@ -35,6 +35,7 @@
       onView: cycleView, onChat: openChat, onInventory: toggleInventory, onDebug: toggleDebug, onMenu: () => (st.menuOpen ? closeMenu() : openMenu())
     });
     controls.sens = S.sens;
+    S.boss = S.boss || { wins: 0, unlocks: [] }; Items.setUnlocked(S.boss.unlocks);
     UI.init(); UI.initStart();
     if (!S.name) { S.name = '플레이어' + (100 + Math.floor(Math.random() * 900)); Settings.save(); }
     $('stName').value = S.name;
@@ -51,7 +52,7 @@
     };
     controls.setMode(S.device || 'pc');
     $('btnStart').addEventListener('click', () => startGame());
-    setupMultiplayer(); setupChat(); setupCombat();
+    setupMultiplayer(); setupChat(); setupCombat(); setupBoss();
     window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
     resize();
     requestAnimationFrame(frame);
@@ -97,8 +98,9 @@
       st.dead = true; st.paused = true; closeChat(true);
       const hit = Combat.lastHit && st.time - Combat.lastHit.t < 8 ? Combat.lastHit : null, me = myName();
       $('deathTitle').textContent = '쓰러졌어요';
-      UI.showDeath(true, hit ? hit.by + ' 님에게 쓰러졌어요. 갑옷을 챙기고 다시 도전해 보세요!' : st.deathCause === 'void' ? '하늘 끝없이 떨어졌어요. 날개를 펴는 걸 잊지 마세요!' : '높은 곳에서 떨어졌어요. 공중에서 점프를 한 번 더 눌러 활공해 보세요.');
-      const line = hit ? me + ' 님이 ' + hit.by + ' 님에게 쓰러졌어요' : me + ' 님이 쓰러졌어요';
+      const tgt = hit ? hit.by + (hit.by === '수정 군주' ? '에게' : ' 님에게') : '';
+      UI.showDeath(true, hit ? tgt + ' 쓰러졌어요. 갑옷을 챙기고 다시 도전해 보세요!' : st.deathCause === 'void' ? '하늘 끝없이 떨어졌어요. 날개를 펴는 걸 잊지 마세요!' : '높은 곳에서 떨어졌어요. 공중에서 점프를 한 번 더 눌러 활공해 보세요.');
+      const line = hit ? me + ' 님이 ' + tgt + ' 쓰러졌어요' : me + ' 님이 쓰러졌어요';
       addChat('', line, true); if (Net.active) Net.emit({ t: 'chat', sys: 1, name: '', text: line });
       controls.setEnabled(false); controls.unlock();
     };
@@ -108,7 +110,7 @@
   }
 
   function respawn() {
-    player.respawn(st.spawn || world.findSpawn()); st.dead = false; st.paused = false; st.deathCause = ''; Combat.lastHit = null;
+    player.respawn(Boss.inFight ? Boss.arenaSpawn() : (st.spawn || world.findSpawn())); st.dead = false; st.paused = false; st.deathCause = ''; Combat.lastHit = null;
     UI.showDeath(false); controls.setEnabled(true); Sfx.play('respawn');
     if (S.device === 'pc') controls.lock();
   }
@@ -141,7 +143,7 @@
     litN: [0.2, 0.24, 0.42], litD: [1, 1, 1]
   };
   function makeEnv(vp, cam, underwater) {
-    const a = st.tod * Math.PI * 2, s = Math.sin(a);
+    const a = (Boss.inFight ? 0.8 : st.tod) * Math.PI * 2, s = Math.sin(a);
     const sunDir = norm3([Math.cos(a) * 0.9, s, 0.35]);
     const day = smooth(-0.12, 0.28, s), tw = Math.exp(-Math.pow(s / 0.2, 2));
     let zen = mix3(C.zenN, C.zenD, day), hor = mix3(C.horN, C.horD, day);
@@ -157,6 +159,10 @@
       entLight: [light[0] * 1.05, light[1] * 1.05, light[2] * 1.05], sunLight: day > 0.15 ? sunDir : norm3([-sunDir[0], -sunDir[1], -sunDir[2]])
     };
     env.cloudCol = [env.cloudCol[0] * (1 + tw * 0.1), env.cloudCol[1] * (1 - tw * 0.1), env.cloudCol[2] * (1 - tw * 0.3)];
+    if (Boss.inFight) {
+      env.zen = [0.1, 0.02, 0.2]; env.hor = [0.34, 0.1, 0.42]; env.fogCol = env.hor.slice(); env.fogNear = 20; env.fogFar = 80; env.starAlpha = 1; env.cloudAlpha = 0.25;
+      env.light = [0.55, 0.45, 0.75]; env.entLight = [0.9, 0.85, 1.05];
+    }
     if (underwater) {
       env.fogCol = [0.07 * (0.3 + day), 0.27 * (0.3 + day), 0.5 * (0.3 + day)]; env.fogNear = 0; env.fogFar = 26;
       env.zen = env.hor = env.fogCol; env.starAlpha = 0; env.cloudAlpha = 0;
@@ -190,8 +196,9 @@
     st.target = world.raycast(player.x, player.eyeY, player.z, dir[0], dir[1], dir[2], 6);
     st.attackT = Math.max(0, st.attackT - dt);
     const t = st.target, held = S.hotbar[st.sel], isItem = held >= 100;
-    const fighting = held === ITEM.SWORD ? Combat.melee(inp.breakHeld, dt) : false;
-    if (inp.breakHeld && t && !fighting) {
+    const fighting = Combat.isSword(held) ? Combat.melee(inp.breakHeld, dt, held) : false, lockBuild = Boss.inFight;
+    if (lockBuild && (inp.breakHeld || inp.placePressed) && !fighting && !isItem && st.time - (st.lockToast || 0) > 2) { st.lockToast = st.time; UI.toast('아레나에서는 블록을 바꿀 수 없어요'); }
+    if (inp.breakHeld && t && !fighting && !lockBuild) {
       st.breakT -= dt;
       if (st.breakT <= 0) {
         if (!Blocks.INFO[t.id].unbreakable) {
@@ -203,9 +210,9 @@
         st.breakT = 0.2; st.attackT = 0.28;
       }
     } else if (!inp.breakHeld) st.breakT = 0;
-    if (inp.placePressed) {
+    if (inp.placePressed || (inp.placeHeld && (held === ITEM.BOW || held === ITEM.BOMB))) {
       if (isItem) Combat.use(held, dt);
-      else if (t) {
+      else if (t && inp.placePressed && !lockBuild) {
         const px = t.x + t.nx, py = t.y + t.ny, pz = t.z + t.nz, id = held, cur = world.getBlock(px, py, pz);
         if ((cur === B.AIR || cur === B.WATER || PLANT[cur]) && py > 0 && py < 127 && !(SOLID[id] && player.overlapsBlock(px, py, pz)) &&
           !(PLANT[id] && !SOLID[world.getBlock(px, py - 1, pz)])) {
@@ -231,6 +238,7 @@
     if (dt > 0) st.fps = lerp(st.fps, 1 / dt, 0.05);
     st.time += dt;
     if (st.phase === 'start') { gfx.begin(0.04, 0.06, 0.14); return; }
+    Boss.tick(dt); bossUI(dt);
     if (st.phase === 'loading') return loadingFrame();
     playFrame(dt);
   }
@@ -239,10 +247,10 @@
     world.update(player.x, player.z, 22);
     const r = Math.min(world.R, 3), ratio = world.readyRatio(player.x, player.z, r);
     $('loadBar').style.width = Math.round(ratio * 100) + '%';
-    $('loadText').textContent = world.stats.chunks + '개 청크 생성됨';
+    $('loadText').textContent = st.loadLabel || (world.stats.chunks + '개 청크 생성됨');
     gfx.begin(0.04, 0.06, 0.14);
     if (ratio >= 0.99 || performance.now() - st.loadStart > 25000) {
-      st.phase = 'play'; st.paused = false;
+      st.phase = 'play'; st.paused = false; st.loadLabel = '';
       $('loading').classList.add('hidden'); $('hud').classList.remove('hidden');
       $('mobileUI').classList.toggle('active', S.device === 'mobile');
       controls.setEnabled(true); UI.setHearts(player.hp); UI.toast(S.device === 'mobile' ? '점프를 공중에서 한 번 더 누르면 활공!' : '공중에서 Space를 한 번 더 누르면 활공!', 3500);
@@ -257,6 +265,7 @@
       if (inp.hotbarDelta) selectSlot((st.sel + inp.hotbarDelta + 9) % 9);
       if (S.dayCycle > 0) st.tod = (st.tod + dt / 300 * S.dayCycle) % 1;
       if (player.y < -15) st.deathCause = 'void';
+      if (Boss.inFight && player.y < G.Arena.y - 9) { const s = Boss.arenaSpawn(); player.x = s.x; player.y = s.y + 0.5; player.z = s.z; player.vx = player.vy = player.vz = 0; player.fallPeak = player.y; player.invuln = Math.max(player.invuln, 1.5); UI.toast('아레나 가운데로 되돌려졌어요', 1500); }
       if (world.isLoaded(Math.floor(player.x), Math.floor(player.z))) player.update(dt, inp);
       interact(dt, inp);
       Combat.update(dt);
@@ -274,7 +283,7 @@
         st.netT = 0;
         const r2 = v => Math.round(v * 100) / 100;
         Net.sendState({ x: r2(player.x), y: r2(player.y), z: r2(player.z), by: r2(st.bodyYaw), yaw: r2(player.yaw), p: r2(player.pitch),
-          g: player.glideAmt > 0.5 ? 1 : 0, og: player.onGround ? 1 : 0, a: st.attackT > 0 ? 1 : 0, hp: player.hp, h: S.hotbar[st.sel] >= 100 ? S.hotbar[st.sel] : 0, ar: Combat.armor });
+          g: player.glideAmt > 0.5 ? 1 : 0, og: player.onGround ? 1 : 0, a: st.attackT > 0 ? 1 : 0, hp: player.hp, h: S.hotbar[st.sel] >= 100 ? S.hotbar[st.sel] : 0, ar: Combat.armor, bw: S.boss.wins });
       }
       updateRemotes(dt);
     }
@@ -285,7 +294,7 @@
     UI.setHearts(player.hp); UI.setWing(player.energy, player.maxEnergy); UI.setClock(st.tod);
     if (st.armorShown !== Combat.armor) {
       st.armorShown = Combat.armor; const ac = $('armorChip'); ac.classList.toggle('hidden', !Combat.armor);
-      if (Combat.armor) ac.textContent = Combat.armor === ITEM.ARMOR_CRYSTAL ? '크리스탈 갑옷 −50%' : '철 갑옷 −30%';
+      if (Combat.armor) ac.textContent = Items.name(Combat.armor) + ' −' + Math.round(Combat.reduction() * 100) + '%';
     }
     const cam = computeCamera();
     const headUnder = world.getBlock(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z)) === B.WATER;
@@ -314,7 +323,7 @@
     if (S.view > 0) drawPlayerBody(cam);
     if (Net.active) drawRemotes(cam);
     drawParticles(cam);
-    Combat.draw(gfx, cam);
+    Combat.draw(gfx, cam); Boss.draw(gfx, cam, st.time);
     drawTarget(cam);
 
     world.drawTranslucent(env, cam, vis);
@@ -469,13 +478,15 @@
   }
   function runCommand(body) {
     const parts = body.split(/\s+/), cmd = parts[0];
-    if (cmd === '도움말' || cmd === 'help') return addChat('', '/도움말 · /스폰 (스폰으로 이동) · /목록 (접속자) — 우클릭: 활·폭탄·갑옷 사용, 좌클릭: 검 공격', true);
+    if (cmd === '도움말' || cmd === 'help') return addChat('', '/도움말 · /스폰 (스폰으로 이동) · /목록 (접속자) · /보스 (다음 보스전) — 우클릭: 활·폭탄·갑옷 사용, 좌클릭: 검 공격', true);
+    if (cmd === '보스') { const s = Boss.status(); return addChat('', s.k === 'fight' ? '보스전 진행 중 (남은 ' + fmt(s.s) + ')' : '다음 보스전까지 ' + fmt(s.s), true); }
     if (cmd === '스폰') { teleportSpawn(); return addChat('', '스폰으로 이동했어요', true); }
     if (cmd === '목록') return addChat('', '접속자 ' + Net.count() + '명: ' + [myName()].concat(Array.from(Net.players.values(), p => p.name)).join(', '), true);
     if (cmd === '해시') return addChat('', '해시: ' + sha256(parts.slice(1).join(' ')) + '  (js/config.js 의 resetHash 에 붙여넣으세요)', true);
     // 비밀 명령어: 입력한 문장의 SHA-256 이 설정된 해시와 같으면 월드 초기화
     const h = sha256(body);
-    if (h === CONFIG.resetHash) { if (!Net.requestReset(h, myName())) addChat('', '권한이 없어요', true); return; }
+    if (h === CONFIG.resetHash) { if (!Net.requestReset(body, myName())) addChat('', '권한이 없어요', true); return; }
+    if (h === CONFIG.bossHash) { if (!Net.requestBoss(body)) addChat('', '권한이 없어요', true); return; }
     addChat('', '알 수 없는 명령어예요. /도움말', true);
   }
   function resetWorld() {
@@ -489,6 +500,7 @@
       case 'boom': Combat.boom(m); break;
       case 'hit': Combat.takeHit(m); break;
       case 'chat': addChat(m.name, m.text, m.sys); break;
+      case 'boss': case 'bev': case 'bhit': case 'bjoin': Boss.onEvent(m); break;
     }
   }
 
@@ -500,11 +512,76 @@
     Combat.init({
       look: () => { const d = lookDir(player.yaw, player.pitch); return { x: player.x, y: player.eyeY, z: player.z, dx: d[0], dy: d[1], dz: d[2] }; },
       world: () => world, player: () => player, swing: () => { st.attackT = 0.28; }, sfx: n => Sfx.play(n), burst,
-      toast: t => UI.toast(t, 1600), myName, shake: v => { st.shake = Math.max(st.shake, v); }, time: () => st.time
+      toast: t => UI.toast(t, 1600), myName, assist: () => controls.mode === 'mobile', inBoss: () => Boss.inFight, shake: v => { st.shake = Math.max(st.shake, v); }, time: () => st.time
     });
     $('btnSrv0').addEventListener('click', () => enterServer(0));
     $('btnSrv1').addEventListener('click', () => enterServer(1));
     CONFIG.servers.forEach((s, i) => { const b = $('btnSrv' + i); if (b) b.textContent = s.name; });
+  }
+
+
+  /* ================= 보스전 연결 ================= */
+  const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  function banner(text) { const b = $('banner'); b.textContent = text; b.classList.add('on'); clearTimeout(st.bannerT); st.bannerT = setTimeout(() => b.classList.remove('on'), 3600); }
+  function showInvite() {
+    if (Boss.phase !== 'invite' || Boss.joined) return;
+    $('invite').classList.remove('hidden'); Sfx.play('respawn'); addChat('', '⚔ 보스전 초대! ' + (S.device === 'mobile' ? '카드의 버튼으로 선택하세요' : '[Y] 참여 · [N] 패스'), true);
+  }
+  function teleportTo(x, y, z, label) {
+    closeChat(true); st.menuOpen = false; st.invOpen = false; UI.showMenu(false); UI.showInventory(false);
+    if (st.dead) { st.dead = false; UI.showDeath(false); player.respawn({ x, y, z }); }
+    player.x = x; player.y = y + 0.3; player.z = z; player.vx = player.vy = player.vz = 0; player.fallPeak = player.y; player.hp = player.maxHp; player.invuln = Math.max(player.invuln, 3);
+    st.phase = 'loading'; st.paused = true; st.loadStart = performance.now(); st.loadLabel = label;
+    $('loading').classList.remove('hidden'); $('hud').classList.add('hidden'); $('mobileUI').classList.remove('active'); controls.setEnabled(false);
+  }
+  function setupBoss() {
+    Boss.init({
+      player: () => player, toast: (t, ms) => UI.toast(t, ms), chat: t => addChat('', t, true), sfx: n => Sfx.play(n), banner,
+      burst: (x, y, z, c, n, sp) => { for (let i = 0; i < n; i++) st.particles.push({ x, y, z, vx: (Math.random() - 0.5) * sp * 2, vy: Math.random() * sp, vz: (Math.random() - 0.5) * sp * 2, life: 0.4 + Math.random() * 0.6, s: 0.07 + Math.random() * 0.1, c: [c[0], c[1], c[2]] }); },
+      shake: v => { st.shake = Math.max(st.shake, v); },
+      invite: showInvite, hideInvite: () => $('invite').classList.add('hidden'),
+      hurt: (raw, kx, kz) => {
+        if (player.dead) return;
+        Combat.lastHit = { by: '수정 군주', t: st.time };
+        player.vx += (kx || 0) * 0.5; player.vz += (kz || 0) * 0.5; if (kx || kz) { player.vy = Math.max(player.vy, 4); player.onGround = false; }
+        player.damage(Math.max(1, Math.round(raw * (1 - Combat.reduction()))));
+      },
+      bar: (hp, max) => { $('bossBar').classList.remove('hidden'); $('bossFill').style.transform = 'scaleX(' + Math.max(0, hp / max) + ')'; $('bossHp').textContent = Math.ceil(hp) + ' / ' + max; },
+      hideBar: () => $('bossBar').classList.add('hidden'),
+      enterArena: (x, y, z) => { st.retPos = { x: player.x, y: player.y, z: player.z }; teleportTo(x, y, z, '보스 아레나로 이동 중…'); addChat('', '아레나로 이동! 화염구는 피하고, 빨간 원이 나타나면 점프하세요', true); },
+      leaveArena: () => { const r = st.retPos || st.spawn || world.findSpawn(); teleportTo(r.x, r.y, r.z, '돌아가는 중…'); },
+      reward: bossReward
+    });
+    $('invYes').addEventListener('click', () => Boss.accept()); $('invNo').addEventListener('click', () => Boss.decline());
+    $('bossChip').addEventListener('click', () => { if (Boss.phase === 'invite' && !Boss.joined) { Boss.declined = false; showInvite(); } else { const s = Boss.status(); UI.toast(s.k === 'fight' ? '보스전 진행 중' : '보스전은 30분마다 열려요 · 1분 전에 참여를 고를 수 있어요', 2600); } });
+    window.addEventListener('keydown', e => {
+      if (st.chatOpen || $('invite').classList.contains('hidden') || (e.target && /INPUT|TEXTAREA/.test(e.target.tagName))) return;
+      if (e.code === 'KeyY') Boss.accept(); else if (e.code === 'KeyN') Boss.decline();
+    });
+  }
+  function bossReward() {
+    const bs = S.boss; bs.wins++; const got = [];
+    if (bs.wins >= 1 && !bs.unlocks.includes(ITEM.ARMOR_HERO)) { bs.unlocks.push(ITEM.ARMOR_HERO); got.push('영웅 갑옷'); }
+    if (bs.wins >= 3 && !bs.unlocks.includes(ITEM.LAVA)) { bs.unlocks.push(ITEM.LAVA); got.push('용암 검'); }
+    Settings.save(); Items.setUnlocked(bs.unlocks); UI.buildInventory();
+    banner('보스 처치! ★' + bs.wins); Sfx.play('respawn');
+    addChat('', '보스 클리어 보상: 칭호 ★' + bs.wins + (got.length ? ' · 새 아이템 해금: ' + got.join(', ') + ' (E 키로 선택)' : (bs.wins < 3 ? ' · 3회 클리어하면 용암 검!' : '')), true);
+    if (got.length) UI.toast('해금: ' + got.join(', ') + ' — E 키(모바일은 블록 버튼)에서 꺼내 쓰세요', 6000);
+  }
+  /** 보스 타이머 칩 · 초대 카운트다운 · 모바일 버튼 라벨 */
+  function bossUI(dt) {
+    st.bossUiT = (st.bossUiT || 0) - dt; if (st.bossUiT > 0) return; st.bossUiT = 0.25;
+    const s = Boss.status(), chip = $('bossChip');
+    chip.textContent = s.k === 'fight' ? '보스전 ' + fmt(s.s) : s.k === 'invite' ? '보스 · ' + (Boss.joined ? '참여 확정 ' : '참여 마감 ') + s.s + '초' : '보스 ' + fmt(s.s);
+    chip.classList.toggle('hot', s.k !== 'idle');
+    if (s.k === 'invite') $('invCount').textContent = s.s;
+    const id = S.hotbar[st.sel];
+    if (st.heldShown !== id) {
+      st.heldShown = id;
+      const sw = Combat.isSword(id), bk = $('btnBreak').querySelector('small'), pl = $('btnPlace').querySelector('small');
+      if (bk) bk.textContent = sw ? '공격' : '부수기';
+      if (pl) pl.textContent = id === ITEM.BOW ? '발사' : id === ITEM.BOMB ? '던지기' : Combat.isArmor(id) ? '착용' : sw ? '—' : '놓기';
+    }
   }
 
   /* ---------- 고정 서버 ---------- */
@@ -581,7 +658,7 @@
     for (const p of Net.players.values()) {
       let d = st.tags.get(p.id);
       if (!d) { d = document.createElement('div'); d.className = 'tag'; box.appendChild(d); st.tags.set(p.id, d); }
-      const label = p.hp > 0 && p.hp < 20 ? p.name + '  ♥' + p.hp : p.name;
+      const label = (p.bw ? '★' + p.bw + ' ' : '') + (p.hp > 0 && p.hp < 20 ? p.name + '  ♥' + p.hp : p.name);
       if (d.textContent !== label) d.textContent = label;
       const x = p.x - cam.x, y = p.y + 2.15 - cam.y, z = p.z - cam.z;
       const cw = m[3] * x + m[7] * y + m[11] * z + m[15];

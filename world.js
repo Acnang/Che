@@ -225,7 +225,7 @@
         }
       }
 
-      return { cx, cz, data, mesh: null, top: Math.min(WH - 1, top), modified: false };
+      return { cx, cz, data, mesh: null, top: Math.min(WH - 1, G.Arena ? G.Arena.stamp(data, ox, oz, top) : top), modified: false };
     }
 
     ensureChunk(cx, cz) {

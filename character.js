@@ -42,7 +42,7 @@
 
     const g = st.glide || 0, A = st.swing || 0, ph = st.walk || 0;
     const IT = G.ITEM || {};
-    const ar = st.armor === IT.ARMOR_CRYSTAL ? { c: [0.46, 0.88, 1.0], e: 0.45 } : st.armor === IT.ARMOR_IRON ? { c: [0.72, 0.76, 0.84], e: 0 } : null;
+    const ar = st.armor === IT.ARMOR_HERO ? { c: [1, 0.8, 0.28], e: 0.3 } : st.armor === IT.ARMOR_CRYSTAL ? { c: [0.46, 0.88, 1.0], e: 0.45 } : st.armor === IT.ARMOR_IRON ? { c: [0.72, 0.76, 0.84], e: 0 } : null;
     // 몸 전체 기울기 (활공 시 앞으로 숙임)
     const MB = mul(M0, mul(T(0, 0.68, 0), mul(RX(-g * 0.55), T(0, -0.68, 0))));
 
@@ -88,7 +88,7 @@
     if (ar) {
       part(MH, 0, 0.3, 0, 0.5, 0.17, 0.5, ar.c, ar.e); part(MH, 0, 0.1, 0.215, 0.5, 0.38, 0.07, mulc(ar.c, 0.85), ar.e);
       part(MH, 0, 0.2, -0.235, 0.5, 0.05, 0.05, mulc(ar.c, 1.1), ar.e); part(MH, -0.235, 0.12, 0, 0.05, 0.3, 0.46, mulc(ar.c, 0.9), ar.e); part(MH, 0.235, 0.12, 0, 0.05, 0.3, 0.46, mulc(ar.c, 0.9), ar.e);
-      if (st.armor === IT.ARMOR_CRYSTAL) part(MH, 0, 0.45, 0, 0.07, 0.16, 0.22, [0.8, 0.97, 1], 0.7);
+      if (st.armor === IT.ARMOR_CRYSTAL || st.armor === IT.ARMOR_HERO) part(MH, 0, 0.45, 0, 0.07, 0.16, 0.22, [0.9, 0.97, 1], 0.7);
     }
     // 머리카락
     const hair = c.hair;
@@ -156,9 +156,10 @@
     const I = G.ITEM; if (!held || held < 100) return;
     const Mi = Mat.mul(M, Mat.rotX(rot));
     const P = (ox, oy, oz, sx, sy, sz, col, em, al) => gfx.drawBox(Mat.mul(Mi, Mat.trans(ox, oy, oz)), sx, sy, sz, col, em || 0, al);
-    if (held === I.SWORD) {
+    if (held === I.SWORD || held === I.LAVA) {
+      const lv = held === I.LAVA;
       P(0, -0.06, 0, 0.045, 0.18, 0.045, [0.42, 0.27, 0.16]); P(0, -0.17, 0, 0.21, 0.035, 0.07, [0.95, 0.78, 0.3], 0.2);
-      P(0, -0.47, 0, 0.075, 0.56, 0.026, [0.8, 0.93, 1], 0.35); P(0, -0.77, 0, 0.045, 0.07, 0.022, [1, 1, 1], 0.7);
+      P(0, -0.47, 0, 0.075, 0.56, 0.026, lv ? [1, 0.45, 0.12] : [0.8, 0.93, 1], lv ? 0.9 : 0.35); P(0, -0.77, 0, 0.045, 0.07, 0.022, [1, 1, 1], 0.7);
     } else if (held === I.BOW) {
       P(0, -0.04, 0, 0.04, 0.07, 0.62, [0.5, 0.33, 0.2]); P(0, -0.04, 0.3, 0.04, 0.06, 0.12, [0.62, 0.42, 0.25]); P(0, -0.04, -0.3, 0.04, 0.06, 0.12, [0.62, 0.42, 0.25]);
       P(0, 0.03, 0, 0.012, 0.012, 0.58, [0.95, 0.95, 0.98]);

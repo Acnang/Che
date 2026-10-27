@@ -16,19 +16,19 @@
       this._bindPC(); this._bindMobile();
     }
     _blank() {
-      return { mx: 0, mz: 0, jumpHeld: false, jumpPressed: false, sprint: false, breakHeld: false, placePressed: false, pickPressed: false,
+      return { mx: 0, mz: 0, jumpHeld: false, jumpPressed: false, sprint: false, breakHeld: false, placePressed: false, placeHeld: false, pickPressed: false,
         dyaw: 0, dpitch: 0, hotbarDelta: 0, hotbarSet: -1 };
     }
     setMode(m) {
       this.mode = m;
       document.body.classList.toggle('mobile', m === 'mobile');
       document.body.classList.toggle('pc', m === 'pc');
-      this.keys = {}; this.in.breakHeld = false; this.in.jumpHeld = false; this.in.mx = this.in.mz = 0;
+      this.keys = {}; this.in.breakHeld = false; this.in.placeHeld = false; this.in.jumpHeld = false; this.in.mx = this.in.mz = 0;
       if (m === 'mobile' && document.pointerLockElement) document.exitPointerLock();
     }
     setEnabled(v) {
       this.enabled = v;
-      if (!v) { this.keys = {}; this.in.breakHeld = false; this.in.jumpHeld = false; this.in.mx = this.in.mz = 0; }
+      if (!v) { this.keys = {}; this.in.breakHeld = false; this.in.placeHeld = false; this.in.jumpHeld = false; this.in.mx = this.in.mz = 0; }
     }
     lock() {
       if (this.mode !== 'pc') return;
@@ -86,10 +86,10 @@
         if (!self.enabled || self.mode !== 'pc') return;
         if (!self.locked) { self.lock(); if (!self.dragLook) return; }
         if (e.button === 0) self.in.breakHeld = true;
-        else if (e.button === 2) self.in.placePressed = true;
+        else if (e.button === 2) { self.in.placePressed = true; self.in.placeHeld = true; }
         else if (e.button === 1) { e.preventDefault(); self.in.pickPressed = true; }
       });
-      window.addEventListener('mouseup', e => { if (e.button === 0) self.in.breakHeld = false; });
+      window.addEventListener('mouseup', e => { if (e.button === 0) self.in.breakHeld = false; if (e.button === 2) self.in.placeHeld = false; });
       window.addEventListener('mousemove', e => {
         if (!self.enabled || self.mode !== 'pc') return;
         if (self.locked || (self.dragLook && e.buttons & 1)) {
@@ -160,7 +160,8 @@
       };
       press($('btnJump'), () => { self.in.jumpHeld = true; self.in.jumpPressed = true; }, () => { self.in.jumpHeld = false; });
       press($('btnBreak'), () => { self.in.breakHeld = true; }, () => { self.in.breakHeld = false; });
-      press($('btnPlace'), () => { self.in.placePressed = true; });
+      press($('btnPlace'), () => { self.in.placePressed = true; self.in.placeHeld = true; }, () => { self.in.placeHeld = false; });
+      press($('btnNext'), () => { self.in.hotbarDelta += 1; });
       press($('btnView'), () => { if (h.onView) h.onView(); });
       press($('btnInv'), () => { if (h.onInventory) h.onInventory(); });
       press($('btnSprint'), () => { self.sprintLatch = !self.sprintLatch; $('btnSprint').classList.toggle('latched', self.sprintLatch); });

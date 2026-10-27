@@ -22,6 +22,7 @@
   <div id="topRight">
     <span id="netChip" class="chip hidden"></span>
     <button id="btnChat" class="round" title="채팅 (Enter)" aria-label="채팅"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
+    <button id="bossChip" class="chip boss" type="button" title="다음 보스전">보스 --:--</button>
     <span id="timeChip" class="chip">06:00</span>
     <button id="btnViewTop" class="round" title="시점 전환 (V)" aria-label="시점 전환">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.500 7 6.500"/></svg>
@@ -41,6 +42,16 @@
   </div>
 
   <div id="chat"><ul id="chatLog"></ul><form id="chatForm" class="hidden" autocomplete="off"><input id="chatInput" maxlength="120" placeholder="메시지 입력 후 Enter · /도움말" autocomplete="off"></form></div>
+  <div id="bossBar" class="hidden"><b>수정 군주</b><div class="bar"><i id="bossFill"></i></div><small id="bossHp"></small></div>
+  <div id="banner"></div>
+  <div id="invite" class="hidden">
+    <div class="inv-card">
+      <b>⚔ 수정 군주 출현!</b>
+      <p>하늘 위 아레나로 모두 함께 이동해 보스와 싸워요. <span class="cd"><span id="invCount">60</span>초 뒤 시작</span></p>
+      <p class="reward">클리어 보상 · ★ 칭호 +1 · 첫 클리어 <u>영웅 갑옷</u> · 3회 클리어 <u>용암 검</u></p>
+      <div class="inv-btns"><button id="invYes" class="primary big" type="button">참여하기 <kbd>Y</kbd></button><button id="invNo" class="ghost big" type="button">패스 <kbd>N</kbd></button></div>
+    </div>
+  </div>
   <div id="tags"></div>
   <div id="toast"></div>
   <pre id="debug" class="hidden"></pre>
@@ -55,6 +66,7 @@
     <button id="btnJump" class="mb big" aria-label="점프/활공"><svg viewBox="0 0 24 24"><path d="M12 19V6M6 11l6-6 6 6"/></svg><small>점프</small></button>
     <button id="btnBreak" class="mb" aria-label="부수기"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-3 1-9 9-4-4 9-9z"/></svg><small>부수기</small></button>
     <button id="btnPlace" class="mb" aria-label="놓기"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9z"/><path d="M12 12l8-4.500M12 12v9M12 12L4 7.500"/></svg><small>놓기</small></button>
+    <button id="btnNext" class="mb sm" aria-label="다음 슬롯"><svg viewBox="0 0 24 24"><path d="M5 12h12M12 6l6 6-6 6"/></svg><small>슬롯</small></button>
     <button id="btnSprint" class="mb sm" aria-label="달리기"><svg viewBox="0 0 24 24"><path d="M5 7l5 5-5 5M12 7l5 5-5 5"/></svg></button>
     <button id="btnView" class="mb sm" aria-label="시점"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.400"/><path d="M5 20c0-4 3-6.500 7-6.500s7 2.500 7 6.500"/></svg></button>
     <button id="btnInv" class="mb sm" aria-label="블록 선택"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button>
@@ -237,6 +249,7 @@
 <script src="audio.js"></script>
 <script src="controls.js"></script>
 <script src="net.js"></script>
+<script src="boss.js"></script>
 <script src="combat.js"></script>
 <script src="ui.js"></script>
 <script src="main.js"></script>

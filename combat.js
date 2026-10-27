@@ -10,7 +10,8 @@
   const { Mat, Blocks, Net, ITEM, hash3 } = G;
   const { B, SOLID, INFO, PLANT } = Blocks;
 
-  const REDUCE = {}; REDUCE[ITEM.ARMOR_IRON] = 0.3; REDUCE[ITEM.ARMOR_CRYSTAL] = 0.5;
+  const REDUCE = {}; REDUCE[ITEM.ARMOR_IRON] = 0.3; REDUCE[ITEM.ARMOR_CRYSTAL] = 0.5; REDUCE[ITEM.ARMOR_HERO] = 0.65;
+  const SWORDS = {}; SWORDS[ITEM.SWORD] = 6; SWORDS[ITEM.LAVA] = 9;
   const SWORD_DMG = 6, ARROW_DMG = 5, REACH = 3.4, BOMB_R = 3.4, BOMB_DMG_R = 5.6, BOMB_DMG = 18;
 
   function rayAABB(ox, oy, oz, dx, dy, dz, mn, mx) {
@@ -32,24 +33,36 @@
     reset() { this.arrows.length = 0; this.bombs.length = 0; this.lastHit = null; },
 
     /* ---------- 사용 ---------- */
-    /** 검: 좌클릭 유지. 사거리 안에 플레이어가 있으면 true(블록은 부수지 않음) */
-    melee(breakHeld, dt) {
-      if (!breakHeld || !Net.active) return false;
-      const L = this.ctx.look(), w = this.ctx.world();
-      const blk = w.raycast(L.x, L.y, L.z, L.dx, L.dy, L.dz, REACH + 0.5);
-      const maxT = Math.min(REACH, blk ? blk.t : 99);
-      let best = null, bt = 1e9;
-      for (const p of Net.players.values()) {
+    isSword(id) { return !!SWORDS[id]; },
+    isArmor(id) { return !!REDUCE[id]; },
+    /** 검: 좌클릭(모바일은 공격 버튼) 유지. 사거리 안에 플레이어/보스가 있으면 true(블록은 부수지 않음) */
+    melee(breakHeld, dt, held) {
+      if (!breakHeld) return false;
+      const Boss = G.Boss, inBoss = Boss && Boss.inFight, pvp = Net.active && !inBoss;
+      if (!pvp && !inBoss) return false;
+      const L = this.ctx.look(), w = this.ctx.world(), pad = this.ctx.assist() ? 0.5 : 0.1, reach = REACH + (pad > 0.2 ? 0.7 : 0);
+      const blk = w.raycast(L.x, L.y, L.z, L.dx, L.dy, L.dz, reach + 0.5);
+      const maxT = Math.min(reach, blk ? blk.t : 99);
+      let best = null, bt = 1e9, boss = false;
+      if (pvp) for (const p of Net.players.values()) {
         if (!p.init || p.hp <= 0) continue;
-        const t = rayAABB(L.x, L.y, L.z, L.dx, L.dy, L.dz, [p.x - 0.35, p.y, p.z - 0.35], [p.x + 0.35, p.y + 1.85, p.z + 0.35]);
+        const t = rayAABB(L.x, L.y, L.z, L.dx, L.dy, L.dz, [p.x - 0.35 - pad, p.y - pad, p.z - 0.35 - pad], [p.x + 0.35 + pad, p.y + 1.85 + pad, p.z + 0.35 + pad]);
         if (t >= 0 && t <= maxT && t < bt) { best = p; bt = t; }
+      }
+      if (inBoss) {
+        const bb = Boss.hitbox();
+        if (bb) { const t = rayAABB(L.x, L.y, L.z, L.dx, L.dy, L.dz, [bb.mn[0] - pad, bb.mn[1] - pad, bb.mn[2] - pad], [bb.mx[0] + pad, bb.mx[1] + pad, bb.mx[2] + pad]); if (t >= 0 && t <= maxT + 0.6 && t < bt) { best = bb; bt = t; boss = true; } }
       }
       if (!best) return false;
       if (this.cd.melee <= 0) {
         this.cd.melee = 0.45; this.ctx.swing(); this.ctx.sfx('swing');
-        const hl = Math.hypot(L.dx, L.dz) || 1;
-        this.sendHit(best, SWORD_DMG, L.dx / hl * 7, L.dz / hl * 7);
-        this.ctx.burst(best.x, best.y + 1.2, best.z, [1, 0.25, 0.3], 10, 3);
+        const dmg = SWORDS[held] || 6;
+        if (boss) { Boss.hit(dmg); this.ctx.burst(L.x + L.dx * bt, L.y + L.dy * bt, L.z + L.dz * bt, [0.8, 0.5, 1], 10, 3); this.ctx.sfx('hit'); }
+        else {
+          const hl = Math.hypot(L.dx, L.dz) || 1;
+          this.sendHit(best, dmg, L.dx / hl * 7, L.dz / hl * 7);
+          this.ctx.burst(best.x, best.y + 1.2, best.z, [1, 0.25, 0.3], 10, 3);
+        }
       }
       return true;
     },
@@ -61,7 +74,7 @@
     use(held, dt) {
       if (held === ITEM.BOW) this.shoot();
       else if (held === ITEM.BOMB) this.throwBomb();
-      else if (held === ITEM.ARMOR_IRON || held === ITEM.ARMOR_CRYSTAL) this.equip(held);
+      else if (REDUCE[held]) this.equip(held);
     },
     equip(id) {
       this.armor = this.armor === id ? 0 : id;
@@ -101,7 +114,13 @@
         for (let s = 0; s < steps; s++) {
           a.vy -= 16 * h; a.x += a.vx * h; a.y += a.vy * h; a.z += a.vz * h;
           if (SOLID[w.getBlock(Math.floor(a.x), Math.floor(a.y), Math.floor(a.z))]) { a.stuck = true; a.life = 3; this.ctx.sfx('click'); break; }
-          if (!a.remote && Net.active) {
+          if (!a.remote && G.Boss && G.Boss.inFight) {
+            const bb = G.Boss.hitbox();
+            if (bb && a.x > bb.mn[0] && a.x < bb.mx[0] && a.y > bb.mn[1] && a.y < bb.mx[1] && a.z > bb.mn[2] && a.z < bb.mx[2]) {
+              G.Boss.hit(ARROW_DMG); this.ctx.burst(a.x, a.y, a.z, [0.8, 0.5, 1], 8, 3); this.ctx.sfx('hit'); this.arrows.splice(i, 1); break;
+            }
+          }
+          if (!a.remote && Net.active && !(G.Boss && G.Boss.inFight)) {
             let hit = null;
             for (const p of Net.players.values()) {
               if (!p.init || p.hp <= 0 || p.id === a.own) continue;
@@ -128,6 +147,7 @@
           this.bombs.splice(i, 1);
           const m = { t: 'boom', uid: b.uid, x: b.x, y: b.y, z: b.z, by: this.ctx.myName() };
           this.boom(m); if (Net.active) Net.emit(m);
+          if (G.Boss && G.Boss.inFight) { const bb = G.Boss.hitbox(); if (bb) { const d = Math.hypot(b.x - (bb.mn[0] + bb.mx[0]) / 2, b.y - (bb.mn[1] + bb.mx[1]) / 2, b.z - (bb.mn[2] + bb.mx[2]) / 2); if (d < 6.5) G.Boss.hit(Math.round(22 * (1 - d / 8))); } }
         } else if (b.remote && b.fuse < -2) this.bombs.splice(i, 1);
       }
     },
@@ -142,7 +162,7 @@
         if (d2 > R * R * (0.8 + 0.4 * hash3(x, y, z, 77))) continue;
         const b = w.getBlock(x, y, z);
         if (b === B.AIR || b === B.WATER || INFO[b].unbreakable) continue;
-        if (y < 1) continue;
+        if (y < 1 || (G.Arena && G.Arena.contains(x, z, 6))) continue;
         w.setBlock(x, y, z, B.AIR, true, true);
       }
       for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -4; dy <= 5; dy++) {
@@ -154,7 +174,8 @@
       this.ctx.sfx('boom');
       const d = Math.hypot(P.x - m.x, P.y + 0.9 - m.y, P.z - m.z);
       this.ctx.shake(Math.max(0, 0.7 * (1 - d / 22)));
-      if (d < BOMB_DMG_R && !P.dead && P.invuln <= 0) {
+      const friendly = G.Boss && G.Boss.inFight && m.by !== this.ctx.myName();
+      if (d < BOMB_DMG_R && !P.dead && P.invuln <= 0 && !friendly) {
         const k = 1 - d / BOMB_DMG_R, raw = Math.round(BOMB_DMG * Math.pow(k, 1.2));
         if (raw > 0) {
           const l = Math.hypot(P.x - m.x, P.z - m.z) || 1;
@@ -168,7 +189,7 @@
     /* ---------- 피격 ---------- */
     takeHit(m) {
       const P = this.ctx.player();
-      if (P.dead || P.invuln > 0) return;
+      if (P.dead || P.invuln > 0 || (G.Boss && G.Boss.inFight)) return;
       this.lastHit = { by: m.by, t: this.ctx.time() };
       P.vx += m.kx || 0; P.vz += m.kz || 0; P.vy = Math.max(P.vy, 5); P.onGround = false;
       P.damage(Math.max(1, Math.round(m.dmg * (1 - this.reduction()))));

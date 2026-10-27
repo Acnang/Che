@@ -95,9 +95,9 @@
 
   /* ---------- Net ---------- */
   const newRemote = (id, name, app) => ({ id, name: name || '플레이어', app: Object.assign({}, G.Character.DEFAULT_APP, app || {}),
-    x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, by: 0, tby: 0, yaw: 0, tyaw: 0, pitch: 0, tp: 0, glide: 0, tg: 0, og: 1, walk: 0, speed: 0, atk: 0, hp: 20, held: 0, armor: 0, init: false });
+    x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, by: 0, tby: 0, yaw: 0, tyaw: 0, pitch: 0, tp: 0, glide: 0, tg: 0, og: 1, walk: 0, speed: 0, atk: 0, hp: 20, held: 0, armor: 0, bw: 0, init: false });
   function applyState(p, m) {
-    p.tx = m.x; p.ty = m.y; p.tz = m.z; p.tby = m.by; p.tyaw = m.yaw; p.tp = m.p; p.tg = m.g; p.og = m.og; p.atk = m.a; p.hp = m.hp == null ? 20 : m.hp; p.held = m.h | 0; p.armor = m.ar | 0;
+    p.tx = m.x; p.ty = m.y; p.tz = m.z; p.tby = m.by; p.tyaw = m.yaw; p.tp = m.p; p.tg = m.g; p.og = m.og; p.atk = m.a; p.hp = m.hp == null ? 20 : m.hp; p.held = m.h | 0; p.armor = m.ar | 0; p.bw = m.bw | 0;
     if (!p.init) { p.x = m.x; p.y = m.y; p.z = m.z; p.by = m.by; p.yaw = m.yaw; p.pitch = m.p; p.init = true; }
   }
 
@@ -187,10 +187,12 @@
         }
         case 'resetreq': {
           if (!conn.pid) break;
-          if (m.h === G.CONFIG.resetHash) this.doReset(String(this.players.get(conn.pid).name));
+          if (G.sha256(String(m.pw || '')) === G.CONFIG.resetHash) this.doReset(String(this.players.get(conn.pid).name));
           else conn.send({ t: 'chat', sys: 1, text: '암호가 틀렸어요.' });
           break;
         }
+        case 'bjoin': case 'bhit': if (conn.pid) { m.from = conn.pid; this.cb.onEvent && this.cb.onEvent(m); } break;
+        case 'bsched': if (conn.pid && G.sha256(String(m.pw || '')) === G.CONFIG.bossHash) this.doBoss(); break;
       }
     },
 
@@ -208,6 +210,7 @@
         case 'app': { const p = this.players.get(m.id); if (p) p.app = Object.assign({}, p.app, m.app); break; }
         case 'time': this.cb.onTime && this.cb.onTime(m.tod); break;
         case 'proj': case 'boom': case 'chat': case 'hit': this.cb.onEvent && this.cb.onEvent(m); break;
+        case 'boss': case 'bev': this.cb.onEvent && this.cb.onEvent(m); break;
         case 'reset': this.cb.onReset && this.cb.onReset(m.by); break;
       }
     },
@@ -223,11 +226,18 @@
       if (this.isHost) { const c = this._conns.get(id); if (c) c.send(m); } else if (this._hostConn) this._hostConn.send(m);
     },
     /** 월드 초기화 요청: 방장이 직접 / 게스트는 해시를 보내 방장이 검증 */
-    requestReset(pwHash, byName) {
+    requestReset(pw, byName) {
       if (!this.active) { this.cb.onReset && this.cb.onReset(byName); return true; }
-      if (this.isHost) { if (pwHash !== G.CONFIG.resetHash) return false; this.doReset(byName); return true; }
-      this._hostConn && this._hostConn.send({ t: 'resetreq', h: pwHash }); return true;
+      if (this.isHost) { if (G.sha256(pw) !== G.CONFIG.resetHash) return false; this.doReset(byName); return true; }
+      this._hostConn && this._hostConn.send({ t: 'resetreq', pw }); return true;
     },
+    /** 보스전 즉시 소환(비밀 명령어): 20초 뒤 시작 */
+    requestBoss(pw) {
+      if (!this.active) { this.cb.onEvent && this.cb.onEvent({ t: 'bev', k: 'sched', t0: Date.now() + 20000 }); return true; }
+      if (this.isHost) { if (G.sha256(pw) !== G.CONFIG.bossHash) return false; this.doBoss(); return true; }
+      this._hostConn && this._hostConn.send({ t: 'bsched', pw }); return true;
+    },
+    doBoss() { const m = { t: 'bev', k: 'sched', t0: Date.now() + 20000 }; this.emit(m); this.cb.onEvent && this.cb.onEvent(m); },
     doReset(by) { this._bcast({ t: 'reset', by }); this.cb.onReset && this.cb.onReset(by); },
 
     /** 고정 서버 입장: 방이 있으면 참가, 없으면 내가 그 코드로 방장이 된다 */

@@ -42,6 +42,8 @@
   G.CONFIG = {
     // 기본 암호는 대화창에서 안내한 값이에요. 꼭 본인만 아는 암호로 바꾸세요 (/해시 새암호 → 해시 붙여넣기)
     resetHash: 'e1423ef2e9b3ab5f55101da5402b47970c4a345000c8e4e7972501a582e9f94d',
+    bossHash: '2688785ad0d21684fa0caddd547d40e042cbbb035ad7bb41e4a0dd885ac1b37e',   // 보스 즉시 소환 명령어(데모용)의 해시 — /해시 로 바꿀 수 있어요
+    boss: { periodMin: 30, inviteSec: 60, durationSec: 300, arena: { x: 40000, y: 70, z: 40000 } },
     servers: [
       { code: 'SERVER1', name: '서버 1', seed: 'lumina-server-1' },
       { code: 'SERVER2', name: '서버 2', seed: 'lumina-server-2' }

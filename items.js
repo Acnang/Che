@@ -3,24 +3,28 @@
  * =========================================================== */
 (function (G) {
   'use strict';
-  const ITEM = { SWORD: 100, BOW: 101, BOMB: 102, ARMOR_IRON: 103, ARMOR_CRYSTAL: 104 };
+  const ITEM = { SWORD: 100, BOW: 101, BOMB: 102, ARMOR_IRON: 103, ARMOR_CRYSTAL: 104, ARMOR_HERO: 105, LAVA: 106 };
   const DEFS = {
     100: { name: '크리스탈 검', tip: '좌클릭: 근접 공격 (피해 3칸)' },
     101: { name: '활', tip: '우클릭: 화살 발사' },
     102: { name: '폭탄', tip: '우클릭: 던지기 · 2초 뒤 폭발해 땅과 플레이어에 피해' },
     103: { name: '철 갑옷', tip: '우클릭: 착용/해제 · 받는 피해 -30%' },
-    104: { name: '크리스탈 갑옷', tip: '우클릭: 착용/해제 · 받는 피해 -50%' }
+    104: { name: '크리스탈 갑옷', tip: '우클릭: 착용/해제 · 받는 피해 -50%' },
+    105: { name: '영웅 갑옷', tip: '보스 첫 클리어 보상 · 받는 피해 -65%' },
+    106: { name: '용암 검', tip: '보스 3회 클리어 보상 · 피해 4.5칸' }
   };
-  const LIST = [100, 101, 102, 103, 104];
+  const LIST = [100, 101, 102, 103, 104, 105, 106];
+  const unlocked = new Set();
   const cache = {};
 
   function draw(id, S) {
     const c = document.createElement('canvas'); c.width = c.height = S;
     const g = c.getContext('2d'); g.scale(S / 64, S / 64); g.lineJoin = 'round'; g.lineCap = 'round';
     const grad = (x0, y0, x1, y1, a, b) => { const q = g.createLinearGradient(x0, y0, x1, y1); q.addColorStop(0, a); q.addColorStop(1, b); return q; };
-    if (id === ITEM.SWORD) {
+    if (id === ITEM.SWORD || id === ITEM.LAVA) {
+      const lava = id === ITEM.LAVA;
       g.translate(32, 33); g.rotate(Math.PI / 4);
-      g.fillStyle = grad(-6, 0, 6, 0, '#e9fbff', '#7fd0ee');
+      g.fillStyle = lava ? grad(-6, 0, 6, 0, '#ffe08a', '#ff5a1f') : grad(-6, 0, 6, 0, '#e9fbff', '#7fd0ee');
       g.beginPath(); g.moveTo(0, -33); g.lineTo(6, -24); g.lineTo(6, 8); g.lineTo(-6, 8); g.lineTo(-6, -24); g.closePath(); g.fill();
       g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(-1.5, -26, 3, 32);
       g.fillStyle = '#f2c14e'; g.fillRect(-13, 8, 26, 5); g.fillStyle = '#c88f26'; g.fillRect(-13, 11, 26, 2);
@@ -44,12 +48,12 @@
       g.fillStyle = '#ff9a2e'; g.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, r = i % 2 ? 3 : 7; g.lineTo(48 + Math.cos(a) * r, 11 + Math.sin(a) * r); } g.closePath(); g.fill();
       g.fillStyle = '#fff3b0'; g.beginPath(); g.arc(48, 11, 2, 0, 7); g.fill();
     } else {
-      const crystal = id === ITEM.ARMOR_CRYSTAL;
-      g.fillStyle = crystal ? grad(8, 10, 56, 56, '#a8f4ff', '#8d7bff') : grad(8, 10, 56, 56, '#e6ebf5', '#7f8aa3');
+      const crystal = id === ITEM.ARMOR_CRYSTAL, hero = id === ITEM.ARMOR_HERO;
+      g.fillStyle = hero ? grad(8, 10, 56, 56, '#fff0a8', '#e08a1e') : crystal ? grad(8, 10, 56, 56, '#a8f4ff', '#8d7bff') : grad(8, 10, 56, 56, '#e6ebf5', '#7f8aa3');
       g.beginPath(); g.moveTo(20, 8); g.lineTo(28, 13); g.quadraticCurveTo(32, 18, 36, 13); g.lineTo(44, 8); g.lineTo(58, 17); g.lineTo(51, 31); g.lineTo(44, 28); g.lineTo(44, 56); g.lineTo(20, 56); g.lineTo(20, 28); g.lineTo(13, 31); g.lineTo(6, 17); g.closePath(); g.fill();
       g.strokeStyle = crystal ? 'rgba(255,255,255,.8)' : 'rgba(30,36,60,.55)'; g.lineWidth = 1.6; g.stroke();
       g.strokeStyle = crystal ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.5)'; g.beginPath(); g.moveTo(32, 20); g.lineTo(32, 56); g.moveTo(20, 36); g.lineTo(44, 36); g.stroke();
-      if (crystal) { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(32, 24); g.lineTo(36, 30); g.lineTo(32, 36); g.lineTo(28, 30); g.closePath(); g.fill(); }
+      if (crystal || hero) { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(32, 24); g.lineTo(36, 30); g.lineTo(32, 36); g.lineTo(28, 30); g.closePath(); g.fill(); }
     }
     return c;
   }
@@ -58,6 +62,8 @@
   G.Items = {
     LIST, DEFS,
     isItem: id => id >= 100,
+    avail: id => id < 105 || unlocked.has(id),
+    setUnlocked(a) { unlocked.clear(); (a || []).forEach(x => unlocked.add(x)); },
     name: id => (id >= 100 ? (DEFS[id] ? DEFS[id].name : '아이템') : G.Blocks.INFO[id].name),
     tip: id => (DEFS[id] ? DEFS[id].tip : ''),
     icon(id, size) {

@@ -182,3 +182,23 @@ body.mobile #hotbar { margin-right: 0; }
 #chat.open #chatLog li.fade { opacity: 1; }
 #chatForm { pointer-events: auto; } #chatForm input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--acc); background: rgba(10, 14, 30, .85); color: #fff; font-size: 14px; }
 body.mobile #chat { bottom: 170px; width: 56vw; }
+
+/* 보스전 */
+#bossChip { cursor: pointer; font-weight: 700; color: #d9c6ff; border-color: rgba(169, 139, 255, .5); } #bossChip.hot { color: #fff; background: rgba(120, 60, 220, .6); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(169, 139, 255, .25); } }
+#bossBar { position: absolute; top: calc(58px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(460px, 70vw); text-align: center; text-shadow: 0 1px 3px #000; }
+#bossBar b { font-size: 14px; letter-spacing: .08em; color: #e6d7ff; } #bossBar .bar { height: 12px; margin: 3px 0 2px; background: rgba(10, 6, 24, .75); border: 1px solid rgba(190, 150, 255, .6); border-radius: 8px; overflow: hidden; }
+#bossBar .bar i { display: block; width: 100%; height: 100%; transform-origin: left; background: linear-gradient(90deg, #8a4dff, #ff6fae); transition: transform .15s; } #bossBar small { font-size: 11px; opacity: .85; }
+#banner { position: absolute; top: 22%; left: 50%; transform: translate(-50%, -10px); font-size: clamp(22px, 5vw, 40px); font-weight: 800; letter-spacing: .04em; color: #fff; text-shadow: 0 0 18px #a98bff, 0 2px 4px #000; opacity: 0; transition: opacity .4s, transform .4s; white-space: nowrap; pointer-events: none; }
+#banner.on { opacity: 1; transform: translate(-50%, 0); }
+#invite { position: absolute; top: calc(64px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(420px, 92vw); pointer-events: auto; z-index: 20; }
+.inv-card { padding: 14px 16px; border-radius: 16px; background: rgba(24, 12, 52, .92); border: 1.5px solid #a98bff; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
+.inv-card b { font-size: 17px; color: #e6d7ff; } .inv-card p { margin: 6px 0; font-size: 13px; line-height: 1.5; } .inv-card .cd { color: #ffd88a; font-weight: 700; } .inv-card .reward { color: #bfeaff; } .inv-card u { text-decoration: none; color: #ffe08a; font-weight: 700; }
+.inv-btns { display: flex; gap: 8px; margin-top: 8px; } .inv-btns button { flex: 1; padding: 12px 8px; } kbd { font-size: 11px; opacity: .7; margin-left: 4px; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; }
+body.mobile .inv-btns button { padding: 16px 8px; font-size: 16px; } body.mobile kbd { display: none; }
+/* 모바일 전투 버튼 */
+#btnNext { right: 4px; bottom: 166px; width: 46px; height: 46px; display: none; } body.mobile #btnNext { display: flex; }
+body.mobile #btnBreak { width: 70px; height: 70px; background: rgba(255, 90, 100, .35); border-color: rgba(255, 150, 160, .7); } body.mobile #btnPlace { width: 70px; height: 70px; background: rgba(123, 230, 255, .28); border-color: rgba(160, 240, 255, .7); }
+body.mobile #btnBreak small, body.mobile #btnPlace small { font-size: 12px; font-weight: 700; }
+body.mobile #bossBar { top: calc(54px + env(safe-area-inset-top)); width: 60vw; } body.mobile #invite { top: calc(52px + env(safe-area-inset-top)); }
+body.mobile #topRight { gap: 5px; } body.mobile .chip { padding: 5px 8px; font-size: 11.5px; }
