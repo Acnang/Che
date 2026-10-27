@@ -41,6 +41,8 @@
     const part = (M, ox, oy, oz, sx, sy, sz, col, emit, alpha) => gfx.drawBox(mul(M, T(ox, oy, oz)), sx, sy, sz, col, emit || 0, alpha);
 
     const g = st.glide || 0, A = st.swing || 0, ph = st.walk || 0;
+    const IT = G.ITEM || {};
+    const ar = st.armor === IT.ARMOR_CRYSTAL ? { c: [0.46, 0.88, 1.0], e: 0.45 } : st.armor === IT.ARMOR_IRON ? { c: [0.72, 0.76, 0.84], e: 0 } : null;
     // 몸 전체 기울기 (활공 시 앞으로 숙임)
     const MB = mul(M0, mul(T(0, 0.68, 0), mul(RX(-g * 0.55), T(0, -0.68, 0))));
 
@@ -51,12 +53,14 @@
       part(ML, 0, -0.26, 0, 0.24, 0.52, 0.26, c.pants);
       part(ML, 0, -0.6, -0.015, 0.255, 0.16, 0.3, c.shoes);
       part(ML, 0, -0.675, -0.015, 0.26, 0.03, 0.305, mulc(c.shoes, 0.62));
+      if (ar) { part(ML, 0, -0.2, 0, 0.275, 0.34, 0.295, ar.c, ar.e); part(ML, 0, -0.4, -0.01, 0.27, 0.07, 0.3, mulc(ar.c, 0.8), ar.e); }
     }
     /* 몸통 */
     part(MB, 0, 1.02, 0, 0.5, 0.68, 0.27, c.shirt);
     part(MB, 0, 0.715, 0, 0.51, 0.07, 0.28, mulc(c.pants, 1.15));
     part(MB, 0, 1.2, -0.139, 0.09, 0.09, 0.012, c.wings, 0.85);       // 가슴의 루미나 결정
     part(MB, 0, 1.33, 0, 0.3, 0.05, 0.28, mulc(c.shirt, 1.12));       // 칼라
+    if (ar) { part(MB, 0, 1.05, 0, 0.56, 0.5, 0.32, ar.c, ar.e); part(MB, 0, 1.05, -0.165, 0.18, 0.3, 0.02, mulc(ar.c, 1.15), ar.e + 0.2); part(MB, 0, 0.78, 0, 0.58, 0.07, 0.33, mulc(ar.c, 0.75), ar.e); }
     /* 팔 */
     for (const s of [-1, 1]) {
       let ax = -Math.sin(ph) * A * s * 0.9, az = s * g * 1.25;
@@ -65,6 +69,8 @@
       part(MA, 0, -0.2, 0, 0.17, 0.4, 0.2, c.shirt);
       part(MA, 0, -0.54, 0, 0.16, 0.28, 0.19, c.skin);
       part(MA, 0, -0.395, 0, 0.175, 0.03, 0.205, mulc(c.shirt, 0.85));
+      if (ar) { part(MA, 0, -0.03, 0, 0.24, 0.15, 0.26, ar.c, ar.e); part(MA, 0, -0.5, 0, 0.185, 0.14, 0.205, mulc(ar.c, 0.9), ar.e); }
+      if (s === 1 && st.held) drawHeld(gfx, mul(MA, T(0, -0.62, 0)), st.held, 1.35);
     }
     /* 머리 */
     const MH = mul(MB, mul(T(0, 1.36, 0), mul(RY(st.headYaw || 0), RX(st.headPitch || 0))));
@@ -79,6 +85,11 @@
     }
     part(MH, 0, 0.11, -0.222, 0.1, 0.02, 0.01, mulc(c.skin, 0.62));
     part(MH, 0, 0.17, -0.226, 0.04, 0.05, 0.02, mulc(c.skin, 0.92));
+    if (ar) {
+      part(MH, 0, 0.3, 0, 0.5, 0.17, 0.5, ar.c, ar.e); part(MH, 0, 0.1, 0.215, 0.5, 0.38, 0.07, mulc(ar.c, 0.85), ar.e);
+      part(MH, 0, 0.2, -0.235, 0.5, 0.05, 0.05, mulc(ar.c, 1.1), ar.e); part(MH, -0.235, 0.12, 0, 0.05, 0.3, 0.46, mulc(ar.c, 0.9), ar.e); part(MH, 0.235, 0.12, 0, 0.05, 0.3, 0.46, mulc(ar.c, 0.9), ar.e);
+      if (st.armor === IT.ARMOR_CRYSTAL) part(MH, 0, 0.45, 0, 0.07, 0.16, 0.22, [0.8, 0.97, 1], 0.7);
+    }
     // 머리카락
     const hair = c.hair;
     switch (app.hairStyle) {
@@ -140,8 +151,24 @@
     }
   }
 
+  /** 손에 든 아이템 (M: 손 위치, 팔 방향 = -y, rot: 앞으로 눕히는 각도) */
+  function drawHeld(gfx, M, held, rot) {
+    const I = G.ITEM; if (!held || held < 100) return;
+    const Mi = Mat.mul(M, Mat.rotX(rot));
+    const P = (ox, oy, oz, sx, sy, sz, col, em, al) => gfx.drawBox(Mat.mul(Mi, Mat.trans(ox, oy, oz)), sx, sy, sz, col, em || 0, al);
+    if (held === I.SWORD) {
+      P(0, -0.06, 0, 0.045, 0.18, 0.045, [0.42, 0.27, 0.16]); P(0, -0.17, 0, 0.21, 0.035, 0.07, [0.95, 0.78, 0.3], 0.2);
+      P(0, -0.47, 0, 0.075, 0.56, 0.026, [0.8, 0.93, 1], 0.35); P(0, -0.77, 0, 0.045, 0.07, 0.022, [1, 1, 1], 0.7);
+    } else if (held === I.BOW) {
+      P(0, -0.04, 0, 0.04, 0.07, 0.62, [0.5, 0.33, 0.2]); P(0, -0.04, 0.3, 0.04, 0.06, 0.12, [0.62, 0.42, 0.25]); P(0, -0.04, -0.3, 0.04, 0.06, 0.12, [0.62, 0.42, 0.25]);
+      P(0, 0.03, 0, 0.012, 0.012, 0.58, [0.95, 0.95, 0.98]);
+    } else if (held === I.BOMB) {
+      P(0, -0.11, 0, 0.23, 0.23, 0.23, [0.13, 0.14, 0.2]); P(0, -0.26, 0, 0.045, 0.09, 0.045, [0.65, 0.55, 0.32]); P(0, -0.32, 0, 0.07, 0.07, 0.07, [1, 0.55, 0.12], 1);
+    }
+  }
+
   /** 1인칭 오른팔 (뷰 공간) — vp = 투영 행렬만 */
-  function drawViewArm(gfx, app, t, swing, attack) {
+  function drawViewArm(gfx, app, t, swing, attack, held) {
     const c = { skin: rgb(app.skin), shirt: rgb(app.shirt) };
     const bob = Math.sin(t * 1) * 0.0;
     let M = Mat.trans(0.3, -0.36 + bob, -0.5);
@@ -149,7 +176,8 @@
     M = Mat.mul(M, Mat.trans(0, 0, 0));
     gfx.drawBox(Mat.mul(M, Mat.trans(0, -0.1, 0)), 0.11, 0.3, 0.13, c.shirt, 0);
     gfx.drawBox(Mat.mul(M, Mat.trans(0, -0.34, 0)), 0.105, 0.2, 0.125, c.skin, 0);
+    if (held) drawHeld(gfx, Mat.mul(M, Mat.trans(0, -0.46, 0)), held, 0.3);
   }
 
-  G.Character = { DEFAULT_APP, HAIR_STYLES, ACCESSORIES, SWATCH, drawBody, drawViewArm, rgb };
+  G.Character = { DEFAULT_APP, HAIR_STYLES, ACCESSORIES, SWATCH, drawBody, drawViewArm, drawHeld, rgb };
 })(window.LUMINA = window.LUMINA || {});

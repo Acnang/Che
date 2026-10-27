@@ -45,7 +45,7 @@
   INFO.forEach(b => { SOLID[b.id] = +b.solid; OCC[b.id] = +b.occ; TRANS[b.id] = +b.trans; PLANT[b.id] = +b.plant; EMIT[b.id] = +b.emit; TARGET[b.id] = +b.target; });
 
   const PLACEABLE = INFO.filter(b => b.place).map(b => b.id);
-  const DEFAULT_HOTBAR = [B.STONE, B.PLANKS, B.BRICK, B.QUARTZ, B.GLASS, B.LOG, B.DIRT, B.GRASS, B.CRYSTAL];
+  const DEFAULT_HOTBAR = [B.STONE, B.PLANKS, B.GLASS, 100, 101, 102, 103, 104, B.CRYSTAL];   // 100~104 = 검/활/폭탄/철갑옷/크리스탈갑옷
 
   /* ---------- 노이즈/색 유틸 ---------- */
   const hs = G.hash2;

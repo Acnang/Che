@@ -51,7 +51,10 @@
           const c = peer.connect('lumina-' + code, { reliable: true });
           c.on('open', () => { clearTimeout(to); res(wrapPeer(c, peer)); });
         });
-        peer.on('error', e => { clearTimeout(to); rej(new Error(e && e.type === 'peer-unavailable' ? '해당 방을 찾을 수 없어요 (코드를 확인해 주세요)' : '연결 오류: ' + (e && e.type || e))); });
+        peer.on('error', e => {
+          clearTimeout(to); const nf = e && e.type === 'peer-unavailable';
+          const err = new Error(nf ? '해당 방을 찾을 수 없어요 (코드를 확인해 주세요)' : '연결 오류: ' + (e && e.type || e)); err.notFound = nf; rej(err);
+        });
       });
     }
   };
@@ -77,7 +80,7 @@
     connect(code) {
       return new Promise((res, rej) => {
         const ch = new BroadcastChannel('lumina-' + code), gid = 'g' + Math.random(); let conn = null;
-        const to = setTimeout(() => rej(new Error('해당 방을 찾을 수 없어요 (코드를 확인해 주세요)')), 2500);
+        const to = setTimeout(() => { const err = new Error('해당 방을 찾을 수 없어요 (코드를 확인해 주세요)'); err.notFound = true; rej(err); }, 2500);
         ch.onmessage = e => {
           const m = e.data; if (m.to !== gid) return;
           if (m.t === 'ack') { clearTimeout(to); conn = mkLocal(ch, gid, m.from); res(conn); }
@@ -92,9 +95,9 @@
 
   /* ---------- Net ---------- */
   const newRemote = (id, name, app) => ({ id, name: name || '플레이어', app: Object.assign({}, G.Character.DEFAULT_APP, app || {}),
-    x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, by: 0, tby: 0, yaw: 0, tyaw: 0, pitch: 0, tp: 0, glide: 0, tg: 0, og: 1, walk: 0, speed: 0, atk: 0, init: false });
+    x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, by: 0, tby: 0, yaw: 0, tyaw: 0, pitch: 0, tp: 0, glide: 0, tg: 0, og: 1, walk: 0, speed: 0, atk: 0, hp: 20, held: 0, armor: 0, init: false });
   function applyState(p, m) {
-    p.tx = m.x; p.ty = m.y; p.tz = m.z; p.tby = m.by; p.tyaw = m.yaw; p.tp = m.p; p.tg = m.g; p.og = m.og; p.atk = m.a;
+    p.tx = m.x; p.ty = m.y; p.tz = m.z; p.tby = m.by; p.tyaw = m.yaw; p.tp = m.p; p.tg = m.g; p.og = m.og; p.atk = m.a; p.hp = m.hp == null ? 20 : m.hp; p.held = m.h | 0; p.armor = m.ar | 0;
     if (!p.init) { p.x = m.x; p.y = m.y; p.z = m.z; p.by = m.by; p.yaw = m.yaw; p.pitch = m.p; p.init = true; }
   }
 
@@ -103,14 +106,14 @@
 
     count() { return this.players.size + 1; },
 
-    async host(info) {
+    async host(info, forcedCode) {
       this.leave(); this.isHost = true; this.myId = 'host'; this.name = info.name; this.seed = info.seed;
       let code = null, lastErr = null;
-      for (let i = 0; i < 5 && !code; i++) {
-        const c = randCode();
+      for (let i = 0; i < (forcedCode ? 1 : 5) && !code; i++) {
+        const c = forcedCode || randCode();
         try { this._srv = await T.listen(c, conn => this._onGuest(conn)); code = c; } catch (e) { lastErr = e; }
       }
-      if (!code) throw new Error('방을 만들 수 없어요' + (lastErr && lastErr.message ? ': ' + lastErr.message : ''));
+      if (!code) { this.isHost = false; throw new Error('방을 만들 수 없어요' + (lastErr && lastErr.message ? ': ' + lastErr.message : '')); }
       this.code = code; this.active = true;
       this._iv = setInterval(() => this._bcast({ t: 'time', tod: this.cb.getTod() }), 4000);
       return code;
@@ -125,7 +128,9 @@
       return new Promise((res, rej) => {
         const to = setTimeout(() => { rej(new Error('호스트 응답이 없어요')); this.leave(); }, 9000);
         conn.onmessage = m => {
-          if (m.t === 'welcome') { clearTimeout(to); this.active = true; this._welcome(m); res(m); } else this._onHostMsg(m);
+          if (m.t === 'welcome') { clearTimeout(to); this.active = true; this._welcome(m); res(m); }
+          else if (m.t === 'full') { clearTimeout(to); rej(new Error('방이 가득 찼어요 (최대 8명)')); this.leave(); }
+          else this._onHostMsg(m);
         };
         conn.onclose = () => { clearTimeout(to); if (this.active) { this.leave(); this.cb.onDisconnect && this.cb.onDisconnect(); } else rej(new Error('연결이 끊어졌어요')); };
         conn.send({ t: 'hello', name: info.name, app: info.app });
@@ -156,6 +161,7 @@
     _onGuestMsg(conn, m) {
       switch (m.t) {
         case 'hello': {
+          if (this.players.size >= 7) { conn.send({ t: 'full' }); break; }
           const id = 'p' + (++this._pid); conn.pid = id;
           const p = newRemote(id, String(m.name || '').slice(0, 12), m.app);
           const list = [{ id: 'host', name: this.name, app: this.cb.getApp() }];
@@ -169,6 +175,22 @@
         case 'state': { const p = this.players.get(conn.pid); if (p) { applyState(p, m); this._bcast(Object.assign({}, m, { id: conn.pid }), conn.pid); } break; }
         case 'block': this.cb.onBlock(m.x, m.y, m.z, m.b); this._bcast(m, conn.pid); break;
         case 'app': { const p = this.players.get(conn.pid); if (p) { p.app = Object.assign({}, p.app, m.app); this._bcast({ t: 'app', id: conn.pid, app: p.app }, conn.pid); } break; }
+        case 'proj': case 'boom': case 'chat': {
+          if (!conn.pid) break; m.from = conn.pid;
+          if (m.t === 'chat') { m.text = String(m.text || '').slice(0, 120); m.name = String(m.name || '').slice(0, 12); }
+          this.cb.onEvent && this.cb.onEvent(m); this._bcast(m, conn.pid); break;
+        }
+        case 'hit': {
+          if (!conn.pid) break; m.from = conn.pid;
+          if (m.to === 'host') this.cb.onEvent && this.cb.onEvent(m); else { const c = this._conns.get(m.to); if (c) c.send(m); }
+          break;
+        }
+        case 'resetreq': {
+          if (!conn.pid) break;
+          if (m.h === G.CONFIG.resetHash) this.doReset(String(this.players.get(conn.pid).name));
+          else conn.send({ t: 'chat', sys: 1, text: '암호가 틀렸어요.' });
+          break;
+        }
       }
     },
 
@@ -185,12 +207,44 @@
         case 'block': this.cb.onBlock(m.x, m.y, m.z, m.b); break;
         case 'app': { const p = this.players.get(m.id); if (p) p.app = Object.assign({}, p.app, m.app); break; }
         case 'time': this.cb.onTime && this.cb.onTime(m.tod); break;
+        case 'proj': case 'boom': case 'chat': case 'hit': this.cb.onEvent && this.cb.onEvent(m); break;
+        case 'reset': this.cb.onReset && this.cb.onReset(m.by); break;
       }
     },
 
     /* ----- 송신 ----- */
     sendState(s) { if (!this.active) return; s.t = 'state'; if (this.isHost) this._bcast(Object.assign({ id: 'host' }, s)); else if (this._hostConn) this._hostConn.send(s); },
     sendBlock(x, y, z, b) { if (!this.active) return; const m = { t: 'block', x, y, z, b }; if (this.isHost) this._bcast(m); else if (this._hostConn) this._hostConn.send(m); },
+    /** 모두에게 게임 이벤트 전송 (proj / boom / chat) */
+    emit(m) { if (!this.active) return; m.from = this.myId; if (this.isHost) this._bcast(m); else if (this._hostConn) this._hostConn.send(m); },
+    /** 특정 플레이어에게만 (hit) — 방장이 중계 */
+    sendTo(id, m) {
+      if (!this.active) return; m.from = this.myId;
+      if (this.isHost) { const c = this._conns.get(id); if (c) c.send(m); } else if (this._hostConn) this._hostConn.send(m);
+    },
+    /** 월드 초기화 요청: 방장이 직접 / 게스트는 해시를 보내 방장이 검증 */
+    requestReset(pwHash, byName) {
+      if (!this.active) { this.cb.onReset && this.cb.onReset(byName); return true; }
+      if (this.isHost) { if (pwHash !== G.CONFIG.resetHash) return false; this.doReset(byName); return true; }
+      this._hostConn && this._hostConn.send({ t: 'resetreq', h: pwHash }); return true;
+    },
+    doReset(by) { this._bcast({ t: 'reset', by }); this.cb.onReset && this.cb.onReset(by); },
+
+    /** 고정 서버 입장: 방이 있으면 참가, 없으면 내가 그 코드로 방장이 된다 */
+    async enterFixed(srv, info, hooks) {
+      let lastErr = null;
+      for (let i = 0; i < 5; i++) {
+        try { const w = await this.join(srv.code, info); return { role: 'guest', welcome: w }; }
+        catch (e) { lastErr = e; if (!e.notFound) { await new Promise(r => setTimeout(r, 700)); continue; } }
+        try {
+          const seed = await hooks.beforeHost();
+          await this.host({ name: info.name, app: info.app, seed }, srv.code);
+          return { role: 'host' };
+        } catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 400 + Math.random() * 900)); }
+      }
+      throw lastErr || new Error('서버에 접속하지 못했어요');
+    },
+
     sendApp(app) { if (!this.active) return; if (this.isHost) this._bcast({ t: 'app', id: 'host', app }); else if (this._hostConn) this._hostConn.send({ t: 'app', app }); }
   };
 

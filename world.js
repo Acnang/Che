@@ -73,7 +73,10 @@
       this.editLog = new Map();   // "x,y,z" → 블록 (멀티플레이 동기화용 편집 기록)
       this.pending = new Map();   // 아직 생성되지 않은 청크에 대한 편집
       this.onEdit = null;
+      this._dirty = new Set();
     }
+    /** setBlock(..., defer=true)로 모아둔 청크를 한 번에 다시 메싱 (폭발 등) */
+    flushDirty() { for (const c of this._dirty) if (c.mesh) this.meshChunk(c); this._dirty.clear(); }
 
     setRenderDistance(r) { this.R = Math.max(2, Math.min(24, r | 0)); this._listDirty = true; }
     key(cx, cz) { return (cx & 0xFFFF) * 65536 + (cz & 0xFFFF); }
@@ -256,7 +259,7 @@
     }
     isLoaded(x, z) { return this.chunks.has(this.key(x >> 4, z >> 4)); }
 
-    setBlock(x, y, z, id, remote) {
+    setBlock(x, y, z, id, remote, defer) {
       if (y < 1 || y >= WH) return false;
       const cx = x >> 4, cz = z >> 4, c = this.getChunk(cx, cz);
       this.editLog.set(x + ',' + y + ',' + z, id);
@@ -273,7 +276,7 @@
         if (dx === -1 && lx !== 0) continue; if (dx === 1 && lx !== 15) continue;
         if (dz === -1 && lz !== 0) continue; if (dz === 1 && lz !== 15) continue;
         const n = this.getChunk(cx + dx, cz + dz);
-        if (n && n.mesh) this.meshChunk(n);
+        if (n && n.mesh) { if (defer) this._dirty.add(n); else this.meshChunk(n); }
       }
       return true;
     }

@@ -21,6 +21,7 @@
 
   <div id="topRight">
     <span id="netChip" class="chip hidden"></span>
+    <button id="btnChat" class="round" title="채팅 (Enter)" aria-label="채팅"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
     <span id="timeChip" class="chip">06:00</span>
     <button id="btnViewTop" class="round" title="시점 전환 (V)" aria-label="시점 전환">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.500 7 6.500"/></svg>
@@ -33,11 +34,13 @@
   <div id="bottom">
     <div id="status">
       <div id="hearts" aria-label="체력"></div>
+      <span id="armorChip" class="chip hidden"></span>
       <div id="wingBar" title="윙 게이지 — 공중에서 점프를 한 번 더 누르고 유지하면 활공"><i></i><span>WING</span></div>
     </div>
     <div id="hotbar"></div>
   </div>
 
+  <div id="chat"><ul id="chatLog"></ul><form id="chatForm" class="hidden" autocomplete="off"><input id="chatInput" maxlength="120" placeholder="메시지 입력 후 Enter · /도움말" autocomplete="off"></form></div>
   <div id="tags"></div>
   <div id="toast"></div>
   <pre id="debug" class="hidden"></pre>
@@ -96,6 +99,10 @@
 
     <button id="btnStart" class="primary big" type="button">혼자 시작</button>
 
+    <div class="mp">
+      <h2 class="label">고정 서버 <small>누구나 같은 서버 이름으로 모여요 · PvP 가능</small></h2>
+      <div class="mp-row servers"><button id="btnSrv0" class="primary" type="button">서버 1</button><button id="btnSrv1" class="primary" type="button">서버 2</button></div>
+    </div>
     <div class="mp">
       <h2 class="label">멀티플레이 <small>친구와 같은 월드에서 (방 코드로 연결)</small></h2>
       <div class="mp-row">
@@ -157,7 +164,8 @@
         <div class="keygrid">
           <span><kbd>W A S D</kbd> 이동</span><span><kbd>Space</kbd> 점프 · 공중에서 다시 눌러 <b>활공</b></span>
           <span><kbd>Shift</kbd> 달리기</span><span><kbd>V</kbd> 시점 전환</span>
-          <span>좌클릭 부수기</span><span>우클릭 놓기 · 휠클릭 블록 복사</span>
+          <span>좌클릭 부수기 · 검은 공격</span><span>우클릭 놓기 · 활/폭탄/갑옷 사용</span>
+          <span><kbd>Enter</kbd> / <kbd>T</kbd> 채팅</span><span>/도움말 명령어 목록</span>
           <span><kbd>1</kbd>–<kbd>9</kbd> / 휠 슬롯 선택</span><span><kbd>E</kbd> 블록 선택창</span>
         </div>
       </details>
@@ -201,7 +209,7 @@
 <!-- ============ 블록 선택 ============ -->
 <div id="inventory" class="modal hidden" role="dialog" aria-modal="true" aria-label="블록 선택">
   <div class="panel inv">
-    <header><h2>블록 선택</h2><small class="hint">선택한 슬롯에 블록을 배치해요</small></header>
+    <header><h2>블록·무기 선택</h2><small class="hint">선택한 슬롯에 배치해요</small></header>
     <div id="invGrid"></div>
     <footer><button id="btnInvClose" class="primary" type="button">닫기</button></footer>
   </div>
@@ -219,7 +227,9 @@
 <noscript><p style="color:#fff;padding:2rem">이 게임은 JavaScript가 필요합니다.</p></noscript>
 
 <script src="noise.js"></script>
+<script src="config.js"></script>
 <script src="blocks.js"></script>
+<script src="items.js"></script>
 <script src="gfx.js"></script>
 <script src="world.js"></script>
 <script src="player.js"></script>
@@ -227,6 +237,7 @@
 <script src="audio.js"></script>
 <script src="controls.js"></script>
 <script src="net.js"></script>
+<script src="combat.js"></script>
 <script src="ui.js"></script>
 <script src="main.js"></script>
 </body>

@@ -46,6 +46,11 @@
         case 'glide': noise(0.5, 'bandpass', 500, 2200, 0.3, 0.6); tone(520, 880, 0.25, 'sine', 0.08); break;
         case 'splash': noise(0.3, 'bandpass', 1800, 500, 0.5, 0.7); break;
         case 'respawn': [523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.002, 0.3, 'sine', 0.18, i * 0.08)); break;
+        case 'swing': noise(0.12, 'bandpass', 900, 2600, 0.28, 0.7); break;
+        case 'bow': tone(300, 140, 0.12, 'triangle', 0.3); noise(0.1, 'highpass', 2500, 1200, 0.18); break;
+        case 'fuse': noise(0.5, 'highpass', 3000, 5500, 0.16, 1.2); break;
+        case 'boom': noise(0.9, 'lowpass', 900, 60, 1.0, 0.6); tone(90, 28, 0.7, 'sawtooth', 0.5); break;
+        case 'hit': tone(180, 60, 0.12, 'square', 0.3); noise(0.1, 'lowpass', 1500, 300, 0.4); break;
         case 'click': tone(700, 500, 0.04, 'square', 0.06); break;
       }
     }

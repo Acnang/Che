@@ -10,7 +10,7 @@
   const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   const DEFAULTS = {
     device: null, renderDistance: isTouch ? 4 : 7, fov: 72, sens: 1, view: 0, resScale: isTouch ? 75 : 100, volume: 60,
-    dayCycle: 1, debug: false, seed: '', app: Object.assign({}, Character.DEFAULT_APP), hotbar: Blocks.DEFAULT_HOTBAR.slice()
+    dayCycle: 1, debug: false, seed: '', hv2: 1, app: Object.assign({}, Character.DEFAULT_APP), hotbar: Blocks.DEFAULT_HOTBAR.slice()
   };
   const KEY = 'lumina.settings.v1';
   const Settings = {
@@ -18,7 +18,7 @@
     load() {
       try {
         const s = JSON.parse(localStorage.getItem(KEY) || 'null');
-        if (s) { Object.assign(this.data, s); this.data.app = Object.assign({}, Character.DEFAULT_APP, s.app || {}); if (!Array.isArray(this.data.hotbar) || this.data.hotbar.length !== 9) this.data.hotbar = Blocks.DEFAULT_HOTBAR.slice(); }
+        if (s) { Object.assign(this.data, s); if (!s.hv2) { this.data.hotbar = Blocks.DEFAULT_HOTBAR.slice(); this.data.hv2 = 1; } this.data.app = Object.assign({}, Character.DEFAULT_APP, s.app || {}); if (!Array.isArray(this.data.hotbar) || this.data.hotbar.length !== 9) this.data.hotbar = Blocks.DEFAULT_HOTBAR.slice(); }
       } catch (e) { /* 저장소 사용 불가 */ }
       return this.data;
     },
@@ -64,8 +64,8 @@
     const bar = $('hotbar'); bar.innerHTML = ''; slotEls = [];
     hotbar.forEach((id, i) => {
       const s = document.createElement('button'); s.className = 'slot'; s.type = 'button';
-      const c = Blocks.makeIcon(id, 64).cloneNode(true);
-      const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(Blocks.makeIcon(id, 64), 0, 0);
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(G.Items.icon(id, 64), 0, 0);
+      s.title = G.Items.name(id);
       s.appendChild(cv);
       const n = document.createElement('em'); n.textContent = i + 1; s.appendChild(n);
       s.addEventListener('click', () => UI.cb.onSelectSlot && UI.cb.onSelectSlot(i));
@@ -79,10 +79,10 @@
   /* 블록 선택창 */
   UI.buildInventory = function () {
     const g = $('invGrid'); g.innerHTML = '';
-    Blocks.PLACEABLE.forEach(id => {
-      const b = document.createElement('button'); b.className = 'inv-item'; b.type = 'button';
-      const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(Blocks.makeIcon(id, 64), 0, 0);
-      b.appendChild(cv); const t = document.createElement('span'); t.textContent = Blocks.INFO[id].name; b.appendChild(t);
+    G.Items.LIST.concat(Blocks.PLACEABLE).forEach(id => {
+      const b = document.createElement('button'); b.className = 'inv-item'; b.type = 'button'; b.title = G.Items.tip(id);
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(G.Items.icon(id, 64), 0, 0);
+      b.appendChild(cv); const t = document.createElement('span'); t.textContent = G.Items.name(id); b.appendChild(t);
       b.addEventListener('click', () => { Sfx_click(); UI.cb.onPickBlock && UI.cb.onPickBlock(id); });
       g.appendChild(b);
     });
@@ -96,7 +96,7 @@
   UI.initStart = function () {
     const S = Settings.data;
     const tips = {
-      pc: ['WASD 이동 · Space 점프 · <b>공중에서 Space 한 번 더(유지) = 활공</b>', '좌클릭 부수기 · 우클릭 놓기 · V 시점 전환 · E 블록 선택', 'Esc 로 설정(캐릭터 디자인 · 청크 거리)을 열 수 있어요'],
+      pc: ['WASD 이동 · Space 점프 · <b>공중에서 Space 한 번 더(유지) = 활공</b>', '좌클릭 부수기/검 공격 · 우클릭 놓기/활·폭탄 · <b>Enter 채팅</b> · E 아이템 선택', 'Esc 로 설정(캐릭터 디자인 · 청크 거리)을 열 수 있어요'],
       mobile: ['왼쪽 화면 드래그 = 이동 · 오른쪽 화면 드래그 = 시점', '<b>공중에서 점프 버튼을 다시 눌러 유지 = 활공</b>', '가로 화면에서 플레이하면 더 편해요']
     };
     const setDev = d => {

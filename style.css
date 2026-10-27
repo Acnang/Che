@@ -171,3 +171,14 @@ body.mobile #hotbar { margin-right: 0; }
 .tag { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: rgba(10, 14, 30, .6); border: 1px solid var(--line); color: #fff; text-shadow: 0 1px 2px #000; will-change: transform; }
 .mpbox #mpInfo { font-weight: 600; color: var(--txt); margin-bottom: 4px; } .mpbox ul { list-style: none; padding: 0; margin: 4px 0 6px; } .mpbox li { padding: 2px 0; }
 .mpbox .row { border: 0; padding: 6px 0 0; }
+
+/* PvP · 채팅 · 서버 */
+.servers { margin-bottom: 2px; } .servers .primary { flex: 1; padding: 10px 8px; }
+#armorChip { color: #bfeaff; font-weight: 700; margin-right: 6px; align-self: center; }
+#chat { position: absolute; left: calc(10px + env(safe-area-inset-left)); bottom: 120px; width: min(420px, 62vw); pointer-events: none; }
+#chatLog { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow: hidden; justify-content: flex-end; }
+#chatLog li { align-self: flex-start; max-width: 100%; padding: 3px 9px; border-radius: 8px; font-size: 13px; line-height: 1.35; background: rgba(10, 14, 30, .55); color: #fff; text-shadow: 0 1px 2px #000; word-break: break-word; transition: opacity .6s; }
+#chatLog li b { color: var(--acc); margin-right: 5px; } #chatLog li.sys { color: #ffe9a8; background: rgba(40, 26, 8, .55); } #chatLog li.fade { opacity: 0; }
+#chat.open #chatLog li.fade { opacity: 1; }
+#chatForm { pointer-events: auto; } #chatForm input { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--acc); background: rgba(10, 14, 30, .85); color: #fff; font-size: 14px; }
+body.mobile #chat { bottom: 170px; width: 56vw; }

@@ -77,13 +77,14 @@
         if (e.code === 'KeyE' && h.onInventory) h.onInventory();
         if (e.code === 'F3') { e.preventDefault(); if (h.onDebug) h.onDebug(); }
         if (e.code === 'KeyP' && h.onMenu) h.onMenu();
+        if ((e.code === 'Enter' || e.code === 'KeyT') && h.onChat) { e.preventDefault(); h.onChat(); }
       });
       window.addEventListener('keyup', e => { self.keys[e.code] = false; });
       window.addEventListener('blur', () => { self.keys = {}; self.in.breakHeld = false; });
       cv.addEventListener('contextmenu', e => e.preventDefault());
       cv.addEventListener('mousedown', e => {
         if (!self.enabled || self.mode !== 'pc') return;
-        if (!self.locked && !self.dragLook) { self.lock(); return; }
+        if (!self.locked) { self.lock(); if (!self.dragLook) return; }
         if (e.button === 0) self.in.breakHeld = true;
         else if (e.button === 2) self.in.placePressed = true;
         else if (e.button === 1) { e.preventDefault(); self.in.pickPressed = true; }

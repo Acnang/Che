@@ -3,7 +3,7 @@
  * =========================================================== */
 (function (G) {
   'use strict';
-  const { Mat, Blocks, World, Player, Character, Controls, UI, Settings, Sfx, seedFrom, Net } = G;
+  const { Mat, Blocks, World, Player, Character, Controls, UI, Settings, Sfx, seedFrom, Net, Combat, Items, ITEM, CONFIG, sha256 } = G;
   const { B, SOLID, PLANT, TARGET } = Blocks;
   const $ = id => document.getElementById(id);
   const S = Settings.data;
@@ -11,7 +11,7 @@
   let gfx, world, player, controls;
   const st = {
     phase: 'start', paused: true, menuOpen: false, invOpen: false, sel: 0, tod: 0.14, time: 0, target: null,
-    breakT: 0, attackT: 0, bodyYaw: 0, particles: [], shake: 0, spawn: null, fps: 60, dbgT: 0, hintShown: false, loadStart: 0, deathCause: '', netT: 0, tags: new Map()
+    breakT: 0, attackT: 0, bodyYaw: 0, particles: [], shake: 0, spawn: null, fps: 60, dbgT: 0, hintShown: false, loadStart: 0, deathCause: '', netT: 0, tags: new Map(), chatOpen: false, fixed: null, reconnecting: false, armorShown: -1
   };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -31,8 +31,8 @@
     }
     gfx.setAtlas(atlas); gfx.setCloudTex(Blocks.buildCloud());
     controls = new Controls($('game'), {
-      onLockChange: locked => { if (!locked && st.phase === 'play' && !st.menuOpen && !st.invOpen && !st.dead && controls.mode === 'pc') openMenu(); },
-      onView: cycleView, onInventory: toggleInventory, onDebug: toggleDebug, onMenu: () => (st.menuOpen ? closeMenu() : openMenu())
+      onLockChange: locked => { if (!locked && st.phase === 'play' && !st.menuOpen && !st.invOpen && !st.dead && !st.chatOpen && controls.mode === 'pc') openMenu(); },
+      onView: cycleView, onChat: openChat, onInventory: toggleInventory, onDebug: toggleDebug, onMenu: () => (st.menuOpen ? closeMenu() : openMenu())
     });
     controls.sens = S.sens;
     UI.init(); UI.initStart();
@@ -44,14 +44,14 @@
       onRenderDistance: r => { if (world) world.setRenderDistance(r); },
       onSens: v => { controls.sens = v; }, onResize: resize,
       onSetTime: t => { st.tod = t; UI.toast('시간 이동'); },
-      onDebug: toggleDebug0, onNewWorld: seed => newWorld(seed), onToSpawn: () => { teleportSpawn(); closeMenu(); },
+      onDebug: toggleDebug0, onNewWorld: seed => { if (Net.active) { UI.toast('멀티플레이 중에는 월드를 바꿀 수 없어요'); return; } newWorld(seed); }, onToSpawn: () => { teleportSpawn(); closeMenu(); },
       onResume: closeMenu, onInventory: toggleInventory, onMenu: () => openMenu(), onView: cycleView,
       onAppearance: () => { if (Net.active) Net.sendApp(S.app); }, onSelectSlot: selectSlot, onPickBlock: id => { S.hotbar[st.sel] = id; Settings.save(); UI.buildHotbar(S.hotbar, st.sel); toggleInventory(); },
       onRespawn: respawn
     };
     controls.setMode(S.device || 'pc');
     $('btnStart').addEventListener('click', () => startGame());
-    setupMultiplayer();
+    setupMultiplayer(); setupChat(); setupCombat();
     window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
     resize();
     requestAnimationFrame(frame);
@@ -83,7 +83,7 @@
     player = new Player(world); player.respawn(st.spawn);
     wirePlayer();
     st.phase = 'loading'; st.paused = true; st.loadStart = performance.now(); st.dead = false;
-    st.menuOpen = false; st.invOpen = false; st.particles.length = 0;
+    st.menuOpen = false; st.invOpen = false; st.particles.length = 0; Combat.reset(); closeChat(true);
     UI.showMenu(false); UI.showInventory(false); UI.showDeath(false);
     $('loading').classList.remove('hidden'); $('hud').classList.add('hidden'); $('mobileUI').classList.remove('active');
     controls.setEnabled(false);
@@ -94,9 +94,12 @@
   function wirePlayer() {
     player.onDamage = n => { UI.flashHurt(); Sfx.play('hurt'); st.shake = Math.min(0.5, 0.15 + n * 0.03); };
     player.onDeath = () => {
-      st.dead = true; st.paused = true;
+      st.dead = true; st.paused = true; closeChat(true);
+      const hit = Combat.lastHit && st.time - Combat.lastHit.t < 8 ? Combat.lastHit : null, me = myName();
       $('deathTitle').textContent = '쓰러졌어요';
-      UI.showDeath(true, st.deathCause === 'void' ? '하늘 끝없이 떨어졌어요. 날개를 펴는 걸 잊지 마세요!' : '높은 곳에서 떨어졌어요. 공중에서 점프를 한 번 더 눌러 활공해 보세요.');
+      UI.showDeath(true, hit ? hit.by + ' 님에게 쓰러졌어요. 갑옷을 챙기고 다시 도전해 보세요!' : st.deathCause === 'void' ? '하늘 끝없이 떨어졌어요. 날개를 펴는 걸 잊지 마세요!' : '높은 곳에서 떨어졌어요. 공중에서 점프를 한 번 더 눌러 활공해 보세요.');
+      const line = hit ? me + ' 님이 ' + hit.by + ' 님에게 쓰러졌어요' : me + ' 님이 쓰러졌어요';
+      addChat('', line, true); if (Net.active) Net.emit({ t: 'chat', sys: 1, name: '', text: line });
       controls.setEnabled(false); controls.unlock();
     };
     player.onLand = (dist, dmg) => { if (dist > 1.6) Sfx.play('land', dist); };
@@ -105,7 +108,7 @@
   }
 
   function respawn() {
-    player.respawn(st.spawn || world.findSpawn()); st.dead = false; st.paused = false;
+    player.respawn(st.spawn || world.findSpawn()); st.dead = false; st.paused = false; st.deathCause = ''; Combat.lastHit = null;
     UI.showDeath(false); controls.setEnabled(true); Sfx.play('respawn');
     if (S.device === 'pc') controls.lock();
   }
@@ -130,7 +133,7 @@
   function cycleView() { S.view = (S.view + 1) % 3; Settings.save(); UI.toast(['1인칭 시점', '3인칭 시점 (뒤)', '3인칭 시점 (앞)'][S.view]); }
   function toggleDebug() { S.debug = !S.debug; Settings.save(); toggleDebug0(); }
   function toggleDebug0() { if (!S.debug) UI.setDebug(null); }
-  function selectSlot(i) { st.sel = clamp(i, 0, 8); UI.selectSlot(st.sel); UI.toast(Blocks.INFO[S.hotbar[st.sel]].name, 900); Sfx.play('click'); }
+  function selectSlot(i) { st.sel = clamp(i, 0, 8); UI.selectSlot(st.sel); { const id = S.hotbar[st.sel]; UI.toast(id >= 100 ? Items.name(id) + ' — ' + Items.tip(id) : Items.name(id), id >= 100 ? 2400 : 900); } Sfx.play('click'); }
 
   /* ---------- 환경 (낮/밤) ---------- */
   const C = {
@@ -186,8 +189,9 @@
     const dir = lookDir(player.yaw, player.pitch);
     st.target = world.raycast(player.x, player.eyeY, player.z, dir[0], dir[1], dir[2], 6);
     st.attackT = Math.max(0, st.attackT - dt);
-    const t = st.target;
-    if (inp.breakHeld && t) {
+    const t = st.target, held = S.hotbar[st.sel], isItem = held >= 100;
+    const fighting = held === ITEM.SWORD ? Combat.melee(inp.breakHeld, dt) : false;
+    if (inp.breakHeld && t && !fighting) {
       st.breakT -= dt;
       if (st.breakT <= 0) {
         if (!Blocks.INFO[t.id].unbreakable) {
@@ -199,11 +203,14 @@
         st.breakT = 0.2; st.attackT = 0.28;
       }
     } else if (!inp.breakHeld) st.breakT = 0;
-    if (inp.placePressed && t) {
-      const px = t.x + t.nx, py = t.y + t.ny, pz = t.z + t.nz, id = S.hotbar[st.sel], cur = world.getBlock(px, py, pz);
-      if ((cur === B.AIR || cur === B.WATER || PLANT[cur]) && py > 0 && py < 127 && !(SOLID[id] && player.overlapsBlock(px, py, pz)) &&
-        !(PLANT[id] && !SOLID[world.getBlock(px, py - 1, pz)])) {
-        world.setBlock(px, py, pz, id); Sfx.play('place'); st.attackT = 0.28;
+    if (inp.placePressed) {
+      if (isItem) Combat.use(held, dt);
+      else if (t) {
+        const px = t.x + t.nx, py = t.y + t.ny, pz = t.z + t.nz, id = held, cur = world.getBlock(px, py, pz);
+        if ((cur === B.AIR || cur === B.WATER || PLANT[cur]) && py > 0 && py < 127 && !(SOLID[id] && player.overlapsBlock(px, py, pz)) &&
+          !(PLANT[id] && !SOLID[world.getBlock(px, py - 1, pz)])) {
+          world.setBlock(px, py, pz, id); Sfx.play('place'); st.attackT = 0.28;
+        }
       }
     }
     if (inp.pickPressed && t && Blocks.PLACEABLE.includes(t.id)) { S.hotbar[st.sel] = t.id; Settings.save(); UI.buildHotbar(S.hotbar, st.sel); }
@@ -252,6 +259,7 @@
       if (player.y < -15) st.deathCause = 'void';
       if (world.isLoaded(Math.floor(player.x), Math.floor(player.z))) player.update(dt, inp);
       interact(dt, inp);
+      Combat.update(dt);
       // 몸 방향
       const moving = player.speedH > 0.4;
       const hr = wrap(player.yaw - st.bodyYaw);
@@ -266,7 +274,7 @@
         st.netT = 0;
         const r2 = v => Math.round(v * 100) / 100;
         Net.sendState({ x: r2(player.x), y: r2(player.y), z: r2(player.z), by: r2(st.bodyYaw), yaw: r2(player.yaw), p: r2(player.pitch),
-          g: player.glideAmt > 0.5 ? 1 : 0, og: player.onGround ? 1 : 0, a: st.attackT > 0 ? 1 : 0 });
+          g: player.glideAmt > 0.5 ? 1 : 0, og: player.onGround ? 1 : 0, a: st.attackT > 0 ? 1 : 0, hp: player.hp, h: S.hotbar[st.sel] >= 100 ? S.hotbar[st.sel] : 0, ar: Combat.armor });
       }
       updateRemotes(dt);
     }
@@ -275,6 +283,10 @@
 
     /* UI */
     UI.setHearts(player.hp); UI.setWing(player.energy, player.maxEnergy); UI.setClock(st.tod);
+    if (st.armorShown !== Combat.armor) {
+      st.armorShown = Combat.armor; const ac = $('armorChip'); ac.classList.toggle('hidden', !Combat.armor);
+      if (Combat.armor) ac.textContent = Combat.armor === ITEM.ARMOR_CRYSTAL ? '크리스탈 갑옷 −50%' : '철 갑옷 −30%';
+    }
     const cam = computeCamera();
     const headUnder = world.getBlock(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z)) === B.WATER;
     UI.setUnderwater(headUnder);
@@ -302,6 +314,7 @@
     if (S.view > 0) drawPlayerBody(cam);
     if (Net.active) drawRemotes(cam);
     drawParticles(cam);
+    Combat.draw(gfx, cam);
     drawTarget(cam);
 
     world.drawTranslucent(env, cam, vis);
@@ -312,7 +325,7 @@
       gfx.clearDepth();
       gfx.beginEntities(P, env, false);
       const sw = Math.sin(player.walkPhase) * Math.min(1, player.speedH / 5) * 0.05;
-      Character.drawViewArm(gfx, S.app, st.time, sw, st.attackT > 0 ? 1 - st.attackT / 0.28 : 0);
+      Character.drawViewArm(gfx, S.app, st.time, sw, st.attackT > 0 ? 1 - st.attackT / 0.28 : 0, S.hotbar[st.sel] >= 100 ? S.hotbar[st.sel] : 0);
     }
   }
   const wrap = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
@@ -322,7 +335,8 @@
     const headYaw = clamp(wrap(player.yaw - st.bodyYaw), -1.1, 1.1);
     Character.drawBody(gfx, S.app, M0, {
       walk: player.walkPhase, swing: player.onGround ? Math.min(1, player.speedH / 4.5) * 0.85 : 0.15, glide: player.glideAmt,
-      attack: st.attackT > 0 ? 1 - st.attackT / 0.28 : 0, headYaw, headPitch: clamp(player.pitch, -1.2, 1.2) * 0.8
+      attack: st.attackT > 0 ? 1 - st.attackT / 0.28 : 0, headYaw, headPitch: clamp(player.pitch, -1.2, 1.2) * 0.8,
+      armor: Combat.armor, held: S.hotbar[st.sel] >= 100 ? S.hotbar[st.sel] : 0
     });
   }
   function particlesUpdate(dt) {
@@ -358,9 +372,10 @@
       getTod: () => st.tod, getApp: () => S.app, getEdits,
       onBlock: (x, y, z, b) => { if (world) world.setBlock(x, y, z, b, true); },
       onTime: t => { if (Math.abs(wrap((t - st.tod) * Math.PI * 2)) > 0.02) st.tod = t; },
-      onJoin: p => { UI.toast(p.name + ' 님이 입장했어요', 2500); refreshNetUI(); },
-      onLeave: p => { UI.toast(p.name + ' 님이 나갔어요', 2500); refreshNetUI(); },
-      onDisconnect: () => { UI.toast('호스트와 연결이 끊겼어요. 혼자 계속 플레이해요', 4000); refreshNetUI(); }
+      onJoin: p => { addChat('', p.name + ' 님이 입장했어요', true); refreshNetUI(); },
+      onLeave: p => { addChat('', p.name + ' 님이 나갔어요', true); refreshNetUI(); },
+      onEvent: onNetEvent, onReset: by => { addChat('', (by || '누군가') + ' 님이 월드를 초기화했어요', true); resetWorld(); },
+      onDisconnect: () => { refreshNetUI(); if (st.fixed) reconnectFixed(); else UI.toast('호스트와 연결이 끊겼어요. 혼자 계속 플레이해요', 4000); }
     };
   }
 
@@ -371,12 +386,12 @@
       $('btnMpHost').classList.remove('hidden'); $('btnMpCopy').classList.add('hidden'); $('btnMpLeave').classList.add('hidden');
       for (const d of st.tags.values()) d.remove(); st.tags.clear(); return;
     }
-    chip.classList.remove('hidden'); chip.textContent = '방 ' + Net.code + ' · ' + Net.count() + '명';
-    info.textContent = (Net.isHost ? '방장 · ' : '참가 중 · ') + '방 코드 ' + Net.code + ' (' + Net.count() + '명)';
+    chip.classList.remove('hidden'); chip.textContent = (st.fixed ? st.fixed.name : '방 ' + Net.code) + ' · ' + Net.count() + '명';
+    info.textContent = (st.fixed ? st.fixed.name + ' · ' : (Net.isHost ? '방장 · ' : '참가 중 · ') + '방 코드 ' + Net.code + ' ') + '(' + Net.count() + '명)';
     const names = [Net.name + ' (나)'];
     for (const p of Net.players.values()) names.push(p.name);
     list.innerHTML = names.map(n => '<li>• ' + n.replace(/[<>&]/g, '') + '</li>').join('');
-    $('btnMpHost').classList.add('hidden'); $('btnMpCopy').classList.remove('hidden'); $('btnMpLeave').classList.remove('hidden');
+    $('btnMpHost').classList.add('hidden'); $('btnMpCopy').classList.toggle('hidden', !!st.fixed); $('btnMpLeave').classList.remove('hidden');
   }
 
   function setupMultiplayer() {
@@ -404,7 +419,7 @@
       $('btnJoin').disabled = false;
     });
     $('btnMpHost').addEventListener('click', () => hostRoom(false));
-    $('btnMpLeave').addEventListener('click', () => { Net.leave(); refreshNetUI(); UI.toast('연결을 끊었어요'); });
+    $('btnMpLeave').addEventListener('click', () => { st.fixed = null; Net.leave(); refreshNetUI(); UI.toast('연결을 끊었어요'); });
     $('btnMpCopy').addEventListener('click', () => {
       const t = Net.code; if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => UI.toast('코드 복사됨: ' + t)).catch(() => UI.toast('방 코드: ' + t)); else UI.toast('방 코드: ' + t);
     });
@@ -422,6 +437,118 @@
     }
   }
 
+
+  /* ================= 채팅 · 명령어 · 초기화 ================= */
+  function addChat(name, text, sys) {
+    const li = document.createElement('li'); if (sys) li.className = 'sys';
+    if (name && !sys) { const b = document.createElement('b'); b.textContent = name; li.appendChild(b); }
+    li.appendChild(document.createTextNode(text));
+    const log = $('chatLog'); log.appendChild(li); while (log.children.length > 40) log.firstChild.remove();
+    setTimeout(() => li.classList.add('fade'), 9000);
+  }
+  function openChat() {
+    if (st.phase !== 'play' || st.dead || st.menuOpen || st.invOpen || st.chatOpen) return;
+    st.chatOpen = true; $('chat').classList.add('open'); $('chatForm').classList.remove('hidden');
+    controls.setEnabled(false); controls.unlock(); $('chatInput').focus();
+  }
+  function closeChat(silent) {
+    if (!st.chatOpen) return;
+    st.chatOpen = false; $('chat').classList.remove('open'); $('chatForm').classList.add('hidden'); $('chatInput').value = ''; $('chatInput').blur();
+    if (!silent && st.phase === 'play' && !st.menuOpen && !st.dead) { controls.setEnabled(true); if (S.device === 'pc') controls.lock(); }
+  }
+  function setupChat() {
+    $('btnChat').addEventListener('click', openChat);
+    $('chatForm').addEventListener('submit', e => { e.preventDefault(); const txt = $('chatInput').value.trim(); closeChat(); if (txt) sendChat(txt); });
+    $('chatInput').addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeChat(); } });
+    addChat('', 'Enter 또는 T 로 채팅 · /도움말 로 명령어 보기', true);
+  }
+  function sendChat(txt) {
+    if (txt[0] === '/') return runCommand(txt.slice(1).trim());
+    const name = myName(); addChat(name, txt);
+    if (Net.active) Net.emit({ t: 'chat', name, text: txt });
+  }
+  function runCommand(body) {
+    const parts = body.split(/\s+/), cmd = parts[0];
+    if (cmd === '도움말' || cmd === 'help') return addChat('', '/도움말 · /스폰 (스폰으로 이동) · /목록 (접속자) — 우클릭: 활·폭탄·갑옷 사용, 좌클릭: 검 공격', true);
+    if (cmd === '스폰') { teleportSpawn(); return addChat('', '스폰으로 이동했어요', true); }
+    if (cmd === '목록') return addChat('', '접속자 ' + Net.count() + '명: ' + [myName()].concat(Array.from(Net.players.values(), p => p.name)).join(', '), true);
+    if (cmd === '해시') return addChat('', '해시: ' + sha256(parts.slice(1).join(' ')) + '  (js/config.js 의 resetHash 에 붙여넣으세요)', true);
+    // 비밀 명령어: 입력한 문장의 SHA-256 이 설정된 해시와 같으면 월드 초기화
+    const h = sha256(body);
+    if (h === CONFIG.resetHash) { if (!Net.requestReset(h, myName())) addChat('', '권한이 없어요', true); return; }
+    addChat('', '알 수 없는 명령어예요. /도움말', true);
+  }
+  function resetWorld() {
+    if (!world) return;
+    newWorld(world.seed, true);
+    UI.toast('월드가 초기화됐어요', 3000);
+  }
+  function onNetEvent(m) {
+    switch (m.t) {
+      case 'proj': Combat.onProj(m); break;
+      case 'boom': Combat.boom(m); break;
+      case 'hit': Combat.takeHit(m); break;
+      case 'chat': addChat(m.name, m.text, m.sys); break;
+    }
+  }
+
+  /* ================= PvP 연결 ================= */
+  function setupCombat() {
+    const burst = (x, y, z, c, n, sp) => {
+      for (let i = 0; i < n; i++) st.particles.push({ x, y, z, vx: (Math.random() - 0.5) * sp * 2, vy: Math.random() * sp, vz: (Math.random() - 0.5) * sp * 2, life: 0.4 + Math.random() * 0.5, s: 0.06 + Math.random() * 0.1, c: [c[0], c[1], c[2]] });
+    };
+    Combat.init({
+      look: () => { const d = lookDir(player.yaw, player.pitch); return { x: player.x, y: player.eyeY, z: player.z, dx: d[0], dy: d[1], dz: d[2] }; },
+      world: () => world, player: () => player, swing: () => { st.attackT = 0.28; }, sfx: n => Sfx.play(n), burst,
+      toast: t => UI.toast(t, 1600), myName, shake: v => { st.shake = Math.max(st.shake, v); }, time: () => st.time
+    });
+    $('btnSrv0').addEventListener('click', () => enterServer(0));
+    $('btnSrv1').addEventListener('click', () => enterServer(1));
+    CONFIG.servers.forEach((s, i) => { const b = $('btnSrv' + i); if (b) b.textContent = s.name; });
+  }
+
+  /* ---------- 고정 서버 ---------- */
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  function applyWelcome(w) {
+    newWorld(w.seed, true);
+    for (const e of w.edits) world.setBlock(e[0], e[1], e[2], e[3], true);
+    st.tod = w.tod;
+  }
+  async function enterServer(i) {
+    const srv = CONFIG.servers[i]; Sfx.unlock();
+    const btns = ['btnSrv0', 'btnSrv1', 'btnStart', 'btnHost', 'btnJoin'].map($);
+    btns.forEach(b => { b.disabled = true; });
+    netStatus(srv.name + ' 접속 중…'); S.name = myName(); S.renderDistance = +$('stRd').value; Settings.save();
+    controls.setMode(S.device || 'pc');
+    try { if (S.device === 'mobile' && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* ignore */ }
+    try {
+      const r = await Net.enterFixed(srv, { name: S.name, app: S.app }, { beforeHost: async () => { $('start').classList.add('hidden'); newWorld(srv.seed, true); return world.seed; } });
+      st.fixed = srv;
+      if (r.role === 'guest') { $('start').classList.add('hidden'); applyWelcome(r.welcome); UI.toast(srv.name + ' 에 참가했어요 (' + Net.count() + '명)', 3500); }
+      else UI.toast(srv.name + ' 을(를) 열었어요 — 다른 사람이 들어올 수 있어요', 4000);
+      refreshNetUI(); netStatus('');
+      if (S.device === 'pc') controls.lock();
+    } catch (e) {
+      netStatus(e.message || String(e), 'err'); Net.leave(); st.fixed = null;
+      if (st.phase !== 'start') { st.phase = 'start'; $('start').classList.remove('hidden'); $('loading').classList.add('hidden'); $('hud').classList.add('hidden'); controls.setEnabled(false); }
+    }
+    btns.forEach(b => { b.disabled = false; });
+  }
+  /** 방장이 나가면: 남은 사람 중 먼저 성공한 쪽이 새 방장이 되고 나머지는 다시 붙는다 */
+  async function reconnectFixed() {
+    const srv = st.fixed; if (!srv || st.reconnecting) return;
+    st.reconnecting = true; UI.toast('서버 연결이 끊겼어요. 다시 접속 중…', 3000);
+    await sleep(300 + Math.random() * 1600);
+    try {
+      if (!st.fixed) { st.reconnecting = false; return; }
+      const r = await Net.enterFixed(srv, { name: myName(), app: S.app }, { beforeHost: async () => world.seed });
+      if (r.role === 'guest') { for (const e of r.welcome.edits) world.setBlock(e[0], e[1], e[2], e[3], true); st.tod = r.welcome.tod; UI.toast(srv.name + ' 에 다시 연결됐어요', 3000); }
+      else UI.toast('이 서버의 방장이 됐어요', 3500);
+      refreshNetUI();
+    } catch (e) { UI.toast('서버에 다시 연결하지 못했어요: ' + (e.message || e), 5000); st.fixed = null; refreshNetUI(); }
+    st.reconnecting = false;
+  }
+
   function updateRemotes(dt) {
     const k = Math.min(1, dt * 12);
     for (const p of Net.players.values()) {
@@ -437,13 +564,13 @@
   }
   function drawRemotes(cam) {
     for (const p of Net.players.values()) {
-      if (!p.init) continue;
+      if (!p.init || p.hp <= 0) continue;
       const dx = p.x - cam.x, dz = p.z - cam.z;
       if (dx * dx + dz * dz > 150 * 150) continue;
       const M0 = Mat.mul(Mat.trans(dx, p.y - cam.y, dz), Mat.rotY(p.by));
       Character.drawBody(gfx, p.app, M0, {
         walk: p.walk, swing: p.og ? Math.min(1, p.speed / 4.5) * 0.85 : 0.15, glide: p.glide,
-        attack: p.atk ? 0.5 + 0.5 * Math.sin(st.time * 18) : 0, headYaw: clamp(wrap(p.yaw - p.by), -1.1, 1.1), headPitch: clamp(p.pitch, -1.2, 1.2) * 0.8
+        attack: p.atk ? 0.5 + 0.5 * Math.sin(st.time * 18) : 0, headYaw: clamp(wrap(p.yaw - p.by), -1.1, 1.1), headPitch: clamp(p.pitch, -1.2, 1.2) * 0.8, armor: p.armor, held: p.held
       });
     }
   }
@@ -454,7 +581,8 @@
     for (const p of Net.players.values()) {
       let d = st.tags.get(p.id);
       if (!d) { d = document.createElement('div'); d.className = 'tag'; box.appendChild(d); st.tags.set(p.id, d); }
-      if (d.textContent !== p.name) d.textContent = p.name;
+      const label = p.hp > 0 && p.hp < 20 ? p.name + '  ♥' + p.hp : p.name;
+      if (d.textContent !== label) d.textContent = label;
       const x = p.x - cam.x, y = p.y + 2.15 - cam.y, z = p.z - cam.z;
       const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
       if (!p.init || cw < 0.1 || cw > 70) { d.style.display = 'none'; continue; }

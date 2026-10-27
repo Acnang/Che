@@ -24,7 +24,7 @@
       this.hp = this.maxHp; this.energy = this.maxEnergy; this.dead = false;
       this.onGround = false; this.inWater = false; this.headWater = false; this.wasInWater = false;
       this.gliding = false; this.glideAmt = 0; this.airTime = 0; this.fallPeak = this.y;
-      this.sinceDmg = 99; this.regenT = 0; this.walkPhase = 0; this.speedH = 0; this.hitWall = false;
+      this.sinceDmg = 99; this.regenT = 0; this.invuln = 3; this.walkPhase = 0; this.speedH = 0; this.hitWall = false;
     }
 
     get eyeY() { return this.y + EYE; }
@@ -72,7 +72,7 @@
     }
 
     damage(n) {
-      if (this.dead || n <= 0) return;
+      if (this.dead || n <= 0 || this.invuln > 0) return;
       this.hp = Math.max(0, this.hp - n); this.sinceDmg = 0;
       if (this.onDamage) this.onDamage(n);
       if (this.hp <= 0) { this.dead = true; this.gliding = false; if (this.onDeath) this.onDeath(); }
@@ -80,8 +80,9 @@
 
     update(dt, inp) {
       if (this.dead) return;
+      if (this.invuln > 0) this.invuln -= dt;
       const w = this.world;
-      if (this.y < -20) { this.damage(999); return; }
+      if (this.y < -20) { this.invuln = 0; this.damage(999); return; }
       const bx = Math.floor(this.x), bz = Math.floor(this.z);
       const feet = w.getBlock(bx, Math.floor(this.y + 0.1), bz), mid = w.getBlock(bx, Math.floor(this.y + 0.9), bz);
       const head = w.getBlock(bx, Math.floor(this.y + EYE), bz);
