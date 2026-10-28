@@ -516,7 +516,8 @@
     });
     $('btnSrv0').addEventListener('click', () => enterServer(0));
     $('btnSrv1').addEventListener('click', () => enterServer(1));
-    CONFIG.servers.forEach((s, i) => { const b = $('btnSrv' + i); if (b) b.textContent = s.name; });
+    CONFIG.servers.forEach((s, i) => { const b = $('btnSrv' + i); if (b) b.innerHTML = '<b>' + s.name + '</b><small>확인 중…</small>'; });
+    refreshServers(); setInterval(refreshServers, 12000);
   }
 
 
@@ -591,8 +592,15 @@
     for (const e of w.edits) world.setBlock(e[0], e[1], e[2], e[3], true);
     st.tod = w.tod;
   }
+  async function refreshServers() {
+    if (st.phase !== 'start' || st.connecting || Net.active) return;
+    await Promise.all(CONFIG.servers.map(async (s, i) => {
+      const n = await Net.probe(s.code), b = $('btnSrv' + i); if (!b || st.phase !== 'start' || st.connecting) return;
+      const sm = b.querySelector('small'); if (sm) sm.textContent = n > 0 ? n + '명 접속 중' : n === 0 ? '비어 있음 · 내가 열기' : '확인 실패';
+    }));
+  }
   async function enterServer(i) {
-    const srv = CONFIG.servers[i]; Sfx.unlock();
+    const srv = CONFIG.servers[i]; Sfx.unlock(); st.connecting = true;
     const btns = ['btnSrv0', 'btnSrv1', 'btnStart', 'btnHost', 'btnJoin'].map($);
     btns.forEach(b => { b.disabled = true; });
     netStatus(srv.name + ' 접속 중…'); S.name = myName(); S.renderDistance = +$('stRd').value; Settings.save();
@@ -609,7 +617,7 @@
       netStatus(e.message || String(e), 'err'); Net.leave(); st.fixed = null;
       if (st.phase !== 'start') { st.phase = 'start'; $('start').classList.remove('hidden'); $('loading').classList.add('hidden'); $('hud').classList.add('hidden'); controls.setEnabled(false); }
     }
-    btns.forEach(b => { b.disabled = false; });
+    btns.forEach(b => { b.disabled = false; }); st.connecting = false; refreshServers();
   }
   /** 방장이 나가면: 남은 사람 중 먼저 성공한 쪽이 새 방장이 되고 나머지는 다시 붙는다 */
   async function reconnectFixed() {

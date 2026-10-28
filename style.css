@@ -202,3 +202,5 @@ body.mobile #btnBreak { width: 70px; height: 70px; background: rgba(255, 90, 100
 body.mobile #btnBreak small, body.mobile #btnPlace small { font-size: 12px; font-weight: 700; }
 body.mobile #bossBar { top: calc(54px + env(safe-area-inset-top)); width: 60vw; } body.mobile #invite { top: calc(52px + env(safe-area-inset-top)); }
 body.mobile #topRight { gap: 5px; } body.mobile .chip { padding: 5px 8px; font-size: 11.5px; }
+
+.servers .primary { display: flex; flex-direction: column; align-items: center; line-height: 1.25; } .servers .primary small { font-size: 11.5px; font-weight: 500; opacity: .85; }

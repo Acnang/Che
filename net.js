@@ -160,6 +160,7 @@
     },
     _onGuestMsg(conn, m) {
       switch (m.t) {
+        case 'ping': conn.send({ t: 'info', n: this.count() }); break;
         case 'hello': {
           if (this.players.size >= 7) { conn.send({ t: 'full' }); break; }
           const id = 'p' + (++this._pid); conn.pid = id;
@@ -218,6 +219,17 @@
     /* ----- 송신 ----- */
     sendState(s) { if (!this.active) return; s.t = 'state'; if (this.isHost) this._bcast(Object.assign({ id: 'host' }, s)); else if (this._hostConn) this._hostConn.send(s); },
     sendBlock(x, y, z, b) { if (!this.active) return; const m = { t: 'block', x, y, z, b }; if (this.isHost) this._bcast(m); else if (this._hostConn) this._hostConn.send(m); },
+    /** 접속하지 않고 서버 인원만 확인: 사람 수 / 0(비어 있음) / -1(확인 실패) */
+    async probe(code) {
+      let c;
+      try { c = await T.connect(code); } catch (e) { return e && e.notFound ? 0 : -1; }
+      return new Promise(res => {
+        const to = setTimeout(() => { try { c.close(); } catch (e) { /* */ } res(-1); }, 4000);
+        c.onmessage = m => { if (m.t === 'info') { clearTimeout(to); try { c.close(); } catch (e) { /* */ } res(m.n); } };
+        c.send({ t: 'ping' });
+      });
+    },
+
     /** 모두에게 게임 이벤트 전송 (proj / boom / chat) */
     emit(m) { if (!this.active) return; m.from = this.myId; if (this.isHost) this._bcast(m); else if (this._hostConn) this._hostConn.send(m); },
     /** 특정 플레이어에게만 (hit) — 방장이 중계 */
